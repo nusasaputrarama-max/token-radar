@@ -4,7 +4,7 @@
 [![rank](https://make.fun/badge/token-radar-01/nusasaputrarama-max/token-radar/rank.svg)](https://make.fun/bounty/token-radar-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=token-radar-01)
 [![reward](https://make.fun/badge/token-radar-01/nusasaputrarama-max/token-radar/reward.svg)](https://make.fun/bounty/token-radar-01?utm_source=github&utm_medium=readme&utm_campaign=token-radar-01)
 
-Token Radar ranks the pre-token protocols of the DefiLlama snapshot by a comparable-multiple implied value — every protocol on the watchlist plus the early ones below its floor — each with a concrete farm plan, in a static dashboard that runs with no network.
+Token Radar ranks the pre-token protocols of the DefiLlama snapshot by a comparable-multiple implied value — every protocol on the watchlist plus the early ones below its floor — each with a farm plan, in a dashboard that runs with no network.
 
 ## Run it
 
