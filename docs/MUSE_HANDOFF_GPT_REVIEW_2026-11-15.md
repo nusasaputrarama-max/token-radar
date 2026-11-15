@@ -43,3 +43,59 @@ If a required input or capability is unavailable, continue with safe independent
 Treat `docs/gpt-review-2026-11-15.md` as the initial audit baseline. After each implementation batch, provide the diff and test evidence in GitHub for independent review. ChatGPT will review the new commit and return additional findings or a closure assessment. Repeat until all findings are either verified closed or explicitly documented as blocked. A finding is not closed merely because code was changed; it requires relevant test evidence and a reviewable diff.
 
 **Authority boundary:** Muse may implement repository code changes within this task. ChatGPT's role is independent review and audit documentation; it must not silently implement application code or claim tests it did not run. Production/deployment and token-launch actions remain outside this authorization.
+
+---
+
+## Handback — implementation complete (2026-11-15)
+
+**Implementation commit:** `234899af2795823d82c63882a6a3d15a6cb3c4e5` (model radar-4),
+on top of `bee5190`. Author and committer
+`nusasaputrarama-max <353745658+nusasaputrarama-max@users.noreply.github.com>`
+(verified with `git log -1 --format='%ae %ce'` before push). Pushed to origin main.
+
+**Full per-finding mapping:** `docs/MUSE_REMEDIATION_REPORT.md`.
+
+**Per-finding status (summary):** P1 valuation-proxy qualification — FIXED.
+P1 growth/maturity calibration — PARTIAL (missing-growth explicit state, listing-age
+wording, "pent-up" removed; weights unchanged by the board-identity constraint, no
+growth-removal sensitivity test). P1 farm entry dispatch — FIXED (single `familyFor()`
+source, explicit actions or verify-first; 24 verify-first rows; no row reaches the
+generic fallback). P1 costs/gas/destination — FIXED (explicit gas map, no silent ETH
+default, no inferred bridge destination, no fixed gas dollars). P1 snapshot/board
+validation — FIXED (unique slugs/watchlist, valid dates, positive TVL, chain dedup,
+exact eligible-set coverage, pre-token watchlist check). P2 live/unpriced semantics —
+FIXED (live tab 24 priced rows only; 283 unpriced shown separately). P2 exclusion
+narrative — FIXED (no parent-product claim; buckets asserted to sum to 63). P2
+reproducibility — FIXED (`scripts/rebuild.sh`, `docs/reproducibility.md`, output dir
+cleaned, slug tie-break). P3 hygiene — FIXED (category normalization, age/date states,
+chain dedup, zero-mcap rule, 45-test suite).
+
+**Verification results (final tree):**
+
+- Unit tests: `node --test tests/model.test.mjs` → 45/45 pass.
+- Determinism: `scripts/rebuild.sh` → board.json, data.js, dossier.json byte-identical
+  across two fresh runs; 226 rows, ranks 1–226, implied non-increasing, watchlist
+  40/40, 186 early.
+- Board identity vs v2 baseline (sha256
+  `43a80608cc169ca15b8805e6f5b9dc8701b4e60e4f21891aa64f51bbed872730`):
+  slug/rank/`implied_value_usd` **0 mismatches over 226 rows**.
+- Farm distinct counts steps 1–6: 48 / 226 / 226 / 7 / 226 / 14; every row 6 steps.
+- Dossier text 37,455 chars (cap 65,536); dashboard 0 `http://` refs.
+- Dashboard recompute (`impliedOf` from `app.js` vs `data.js`): 0 mismatches, 226 rows.
+- Screenshots: 4 real headless-Chrome renders at 1440×900, all ≤512 KiB, visually checked.
+- Sealed snapshot SHA-256:
+  `42a71213519479f3a180cc5010cbbf6bd18a2447fa0ad29e4c5122b6c9184393`
+  (758 protocols, 40 watchlist).
+
+**Remaining risks:** (1) growth/maturity weights uncalibrated by design — recalibration
+would break v2 board identity and needs a deliberate decision; no growth-removal
+sensitivity test exists. (2) FDV sensitivity cannot be computed — the snapshot carries
+no FDV. (3) Farm actions are family-level, not protocol-verified against live sources.
+(4) The sealed snapshot is not in the repo; reproduction needs the kit input above.
+(5) No screen-reader or manual device pass on the dashboard changes.
+
+**Not done (out of scope for this commit):** no make.fun submission — v2 remains the
+live entry and resubmission needs Rama's approval of this exact commit; no transcript
+bundle (main agent bundles later). The already-pushed `bee5190` commit was not
+rewritten or force-pushed.
+
