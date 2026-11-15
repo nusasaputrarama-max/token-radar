@@ -22,7 +22,7 @@ The snapshot holds 758 protocols at or above $5M TVL, as of 2026-11-14. The boar
 - **40 watchlist protocols** — at or above the $50M floor with no token on record.
 - **186 early protocols** — every rankable pre-token protocol below the floor, not just the largest few.
 
-63 pre-token protocols at or above the floor are **not** ranked: the watchlist leaves them out as bridges, liquid-staking or restaked products, or products of a parent protocol, so they are not standalone launches. The dashboard says so, with the counts.
+63 pre-token protocols at or above the floor are **not** ranked: the watchlist leaves them out as bridges, liquid-staking or restaked products, or products of a parent protocol, so they are not standalone launches. By their own category, 44 of the 63 are bridges, liquid-staking or restaked products — 24 bridges, 18 liquid-staking and 2 restaked BTC — among them Base Bridge, Binance staked ETH and CCIP. The dashboard says so, with the counts.
 
 ## The model (radar-3)
 

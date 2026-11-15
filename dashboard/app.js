@@ -289,11 +289,28 @@
     );
   }
 
+  function farmPanel() {
+    return el('section', { class: 'panel farm' },
+      el('h2', { text: 'How to read the farm plan' }),
+      el('p', { class: 'sub', text: 'Every row carries six steps, each with its cost and its time. The steps are derived from the protocol\u2019s own record, never written by hand for a name.' }),
+      el('ol', null,
+        el('li', { text: 'Start clean: a fresh wallet that holds only the funds for this farm, its seed phrase offline. The gas token follows the chain.' }),
+        el('li', { text: 'Enter with the category\u2019s own action — supply on a lender, liquidity on a DEX, a bridge, a stake — with capital from the protocol\u2019s TVL: $200 above $1B, $100 above $100M, $50 below.' }),
+        el('li', { text: 'Stay active weekly: one qualifying action that fits what the protocol does — borrow and repay on a lender, swap and collect fees on a DEX, vote on a governance protocol — so the wallet counts in more than one snapshot.' }),
+        el('li', { text: 'Hold: 90 days for a protocol under six months old, 60 under eighteen months, 45 above, so the activity spans snapshots.' }),
+        el('li', { text: 'Claim from the protocol\u2019s own points or rewards page, and check what the activity earned before withdrawing. Never pay to claim.' }),
+        el('li', { text: 'Log it: the wallet, the amounts, the dates and every transaction, in the form that family\u2019s position needs, so the position can be repeated or unwound.' })
+      ),
+      el('p', { class: 'sub', text: 'Steps two, three, five and six follow the protocol\u2019s category family — lending, DEX, bridge, staking, derivatives, prediction, curator, stablecoin, RWA, insurance, governance, chain, payments, indexes, CeDeFi, or other — because a farm that ignores what the protocol does is not a farm. The family comes from the snapshot\u2019s own category.' })
+    );
+  }
+
   function notesPanel() {
+    var b = DATA.excluded_breakdown;
     return el('section', { class: 'panel notes' },
       el('h2', { text: 'What the board leaves out, and why' }),
       el('ul', null,
-        el('li', { text: DATA.excluded_above_floor + ' pre-token protocols at or above the $' + Math.round(DATA.floor_usd / 1e6) + 'M floor are not ranked: the watchlist leaves them out as bridges, liquid-staking or restaked products, or products of a parent protocol, so they are not standalone launches.' }),
+        el('li', { text: DATA.excluded_above_floor + ' pre-token protocols at or above the $' + Math.round(DATA.floor_usd / 1e6) + 'M floor are not ranked: the watchlist leaves them out as bridges, liquid-staking or restaked products, or products of a parent protocol, so they are not standalone launches. By their own category, ' + (b.bridges + b.liquid_staking + b.restaked_btc) + ' of the ' + DATA.excluded_above_floor + ' are bridges, liquid-staking or restaked products — ' + b.bridges + ' bridges, ' + b.liquid_staking + ' liquid-staking and ' + b.restaked_btc + ' restaked BTC — among them Base Bridge, Binance staked ETH and CCIP: a chain\u2019s own bridge, an exchange\u2019s staked-ETH product and a messaging protocol. The other ' + b.other + ' are left out by the watchlist\u2019s own rule, which lists only standalone launches at or above the floor.' }),
         el('li', { text: 'The watchlist is a floor, never a ceiling: the early radar ranks every pre-token protocol below the floor that is not an exchange and not a versioned pool.' }),
         el('li', { text: 'A protocol is called pre-token because its record carries no token, never because it has none: a record may miss a token that exists.' }),
         el('li', { text: 'Implied value is the entry\u2019s own claim from the snapshot\u2019s figures. It is not a price, not a prediction that a token will be issued, and not financial advice.' })
@@ -367,6 +384,7 @@
     shell.appendChild(state.tab === 'pre-token' ? boardTable() : liveTable());
     if (state.tab === 'pre-token') {
       shell.appendChild(modelPanel());
+      shell.appendChild(farmPanel());
       shell.appendChild(notesPanel());
     }
     shell.appendChild(foot());

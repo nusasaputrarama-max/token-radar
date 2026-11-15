@@ -3,9 +3,10 @@
 // The board ranks every protocol on the snapshot's watchlist (the floor) plus every
 // rankable pre-token protocol below the watchlist floor (the early radar). It does not
 // rank the 63 pre-token protocols at or above the floor that the watchlist leaves out:
-// 43 of them are bridges, liquid-staking or restaked products, and the other 20 record a
-// parent protocol in DefiLlama, so they are products of an existing protocol, not
-// standalone launches. The dashboard says so, with the counts.
+// 44 of them are bridges, liquid-staking or restaked products by their own category
+// (24 bridges, 18 liquid-staking, 2 restaked BTC), and the other 19 are left out by
+// the watchlist's own rule as products of an existing protocol or venue, not standalone
+// launches. The dashboard says so, with the counts.
 //
 // A protocol is pre-token when its record carries no token: no market cap, no CoinGecko
 // id, no symbol. Rankable means pre-token, not a CEX, and not a versioned pool
@@ -178,6 +179,8 @@ export interface RadarData {
   board_size: number;
   early_size: number;
   excluded_above_floor: number;
+  /** The 63 above the floor, by their own category: bridges, liquid-staking, restaked BTC, other. */
+  excluded_breakdown: { bridges: number; liquid_staking: number; restaked_btc: number; other: number };
   live_size: number;
   rows: RadarRow[];
   live: LiveRow[];
@@ -602,7 +605,12 @@ export function buildRadar(snapshot: Snapshot, model: ModelConstants = MODEL): {
   const early = board.filter((r) => !snapshot.watchlist.includes(r.slug)).length;
   const excluded = snapshot.protocols.filter(
     (p) => isRankable(p) && !snapshot.watchlist.includes(p.slug) && p.tvl_usd >= snapshot.floor_usd,
-  ).length;
+  );
+  // The excluded, by their own category: a bridge by name is a bridge, liquid-staking
+  // and restaked BTC are their own categories, the rest are left out by the watchlist.
+  const bridges = excluded.filter((p) => (p.category ?? '').toLowerCase().includes('bridge')).length;
+  const liquidStaking = excluded.filter((p) => p.category === 'Liquid Staking').length;
+  const restakedBtc = excluded.filter((p) => p.category === 'Restaked BTC').length;
   const multiples = categoryMultiples(
     snapshot.protocols.filter((p) => !isPreToken(p) && p.category !== 'CEX'),
     model,
@@ -618,7 +626,13 @@ export function buildRadar(snapshot: Snapshot, model: ModelConstants = MODEL): {
     watchlist_size: snapshot.watchlist.length,
     board_size: board.length,
     early_size: early,
-    excluded_above_floor: excluded,
+    excluded_above_floor: excluded.length,
+    excluded_breakdown: {
+      bridges,
+      liquid_staking: liquidStaking,
+      restaked_btc: restakedBtc,
+      other: excluded.length - bridges - liquidStaking - restakedBtc,
+    },
     live_size: live.length,
     rows: board.map(radarRow),
     live,

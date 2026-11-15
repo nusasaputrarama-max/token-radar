@@ -140,11 +140,11 @@ th button:hover { color: var(--ink); }
   padding: 9px 16px; font: inherit; font-weight: 700; cursor: pointer;
 }
 
-/* Model + notes */
-.model h2, .notes h2 { font-size: 18px; margin: 0 0 8px; }
-.model, .notes { padding: 18px 20px; }
-.model p, .notes p { color: var(--muted); margin: 0 0 10px; max-width: 88ch; }
-.model p:last-child, .notes p:last-child { margin-bottom: 0; }
+/* Model + notes + farm plan */
+.model h2, .notes h2, .farm h2 { font-size: 18px; margin: 0 0 8px; }
+.model, .notes, .farm { padding: 18px 20px; }
+.model p, .notes p, .farm p { color: var(--muted); margin: 0 0 10px; max-width: 88ch; }
+.model p:last-child, .notes p:last-child, .farm p:last-child { margin-bottom: 0; }
 .formula {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 13px; background: var(--bg); border: 1px solid var(--line);
@@ -155,6 +155,8 @@ th button:hover { color: var(--ink); }
 .model dd { margin: 2px 0 0; font-weight: 700; font-variant-numeric: tabular-nums; }
 .notes ul { margin: 0; padding-left: 20px; color: var(--muted); }
 .notes li { margin-bottom: 6px; max-width: 88ch; }
+.farm ol { margin: 0 0 10px; padding-left: 20px; color: var(--muted); }
+.farm li { margin-bottom: 6px; max-width: 88ch; }
 .foot { color: var(--faint); font-size: 12.5px; padding: 4px 2px; }
 .foot b { color: var(--muted); }
 
