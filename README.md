@@ -4,7 +4,7 @@
 [![rank](https://make.fun/badge/token-radar-01/nusasaputrarama-max/token-radar/rank.svg)](https://make.fun/bounty/token-radar-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=token-radar-01)
 [![reward](https://make.fun/badge/token-radar-01/nusasaputrarama-max/token-radar/reward.svg)](https://make.fun/bounty/token-radar-01?utm_source=github&utm_medium=readme&utm_campaign=token-radar-01)
 
-Token Radar ranks the pre-token protocols of the DefiLlama snapshot by a comparable-multiple implied value — every protocol on the watchlist plus the early ones below its floor — each with a farm plan, in a dashboard that runs with no network.
+Token Radar ranks the pre-token protocols of the DefiLlama snapshot by a snapshot-based comparable proxy — every protocol on the watchlist plus the early ones below its floor — each with a farm plan, in a dashboard that runs with no network. The proxy is not a token valuation, not a price, and not a prediction that a token will be issued.
 
 ## Run it
 
@@ -22,22 +22,40 @@ The snapshot holds 758 protocols at or above $5M TVL, as of 2026-11-14. The boar
 - **40 watchlist protocols** — at or above the $50M floor with no token on record.
 - **186 early protocols** — every rankable pre-token protocol below the floor, not just the largest few.
 
-63 pre-token protocols at or above the floor are **not** ranked: the watchlist leaves them out as bridges, liquid-staking or restaked products, or products of a parent protocol, so they are not standalone launches. By their own category, 44 of the 63 are bridges, liquid-staking or restaked products — 24 bridges, 18 liquid-staking and 2 restaked BTC — among them Base Bridge, Binance staked ETH and CCIP. The dashboard says so, with the counts.
+63 pre-token protocols at or above the floor are **not** ranked: the watchlist leaves them out. By their own category, 44 of the 63 are bridges, liquid-staking or restaked products — 24 bridges, 18 liquid-staking and 2 restaked BTC — among them Base Bridge, Binance staked ETH and CCIP. The other 19 are excluded by the supplied watchlist rule; the snapshot fields do not establish why, so no reason is claimed for them. The dashboard says so, with the counts.
 
-## The model (radar-3)
+## The model (radar-4)
 
-Implied value is a comparable-multiple valuation, computed from the snapshot itself — no protocol name is ever special-cased:
+Implied value is a snapshot-based comparable proxy, computed from the snapshot itself — no protocol name is ever special-cased. Market cap is not enterprise value, and TVL measures assets deposited, not value accruing to a token; the number is a proxy for ranking, not a valuation. The snapshot carries no FDV, so the proxy uses circulating market cap; an FDV/TVL sensitivity cannot be computed from these fields, and the two measures are never mixed. A zero market cap counts as no market cap (unpriced, not live).
 
 ```
 implied = round( tvl_usd x category_multiple x growth_mult x maturity_mult x breadth_mult )
 ```
 
-- **Category multiple** — the median market-cap / TVL of the live-token protocols in the same category, shrunk toward the global median (0.24x) with a prior of 6 protocols, clamped to [0.02, 1.25]. A category with fewer than two live comparables takes the global median outright, because one observation cannot set a price. A zero market cap counts as no market cap.
-- **Growth** — the 7-day TVL change, clamped to [-60%, +120%]. A falling TVL discounts more (0.70 per point) than a rising one adds (0.50 per point).
-- **Maturity** — 0.70 + 0.30 × min(age, 1460 days) / 1460. A protocol that has run longer with no token carries more pent-up launch value. Unknown age counts as 365 days.
+- **Category multiple** — the median market-cap / TVL of the live-token protocols in the same category, shrunk toward the global median (0.24x) with a prior of 6 protocols, clamped to [0.02, 1.25]. A category with fewer than two live comparables takes the global median outright, because one observation cannot set a price. A zero market cap counts as no market cap. Each multiple carries its sample size, its median and its interquartile range; the dashboard marks multiples that rest on the global median or on highly dispersed comparables (IQR above the median) as low confidence.
+- **Growth** — the 7-day TVL change, clamped to [-60%, +120%]. A falling TVL discounts more (0.70 per point) than a rising one adds (0.50 per point). A missing 7-day change is an explicit state: the proxy treats it as 0, and the dashboard says so.
+- **Time since listing** — 0.70 + 0.30 × min(age, 1460 days) / 1460, where age is the time since the protocol was first listed on DefiLlama. A listing date is not necessarily the launch date. Unknown age counts as 365 days.
 - **Breadth** — 1 + 0.02 per extra chain, to 1.20. Each additional chain is distribution surface for a launch.
 
-Every row also carries a six-step farm plan derived from its own category, chains, TVL and age: the entry action, a weekly action, a hold, a rewards check and a log — each fitted to the protocol's category family (lending, DEX, bridge, staking, and so on), plus what it costs and how long it takes. The dashboard recomputes each row from the same figures, so the page and `board.json` carry the same arithmetic.
+Every row also carries a six-step farm plan derived from its own category, chains, TVL and age: the entry action, a weekly action, a hold, a rewards check and a log — each fitted to the protocol's category family (lending, DEX, bridge, staking, and so on), plus what it costs and how long it takes. Entry actions route through one family classifier, so no family falls through to a deposit its product cannot take; where the snapshot cannot support a safe action, the plan says to verify first instead of inventing one. Network fees are variable — no step states a fixed gas dollar amount, and an unknown fee asset is named as unverified, never guessed. The dashboard recomputes each row from the same figures, so the page and `board.json` carry the same arithmetic.
+
+## Reproducibility
+
+The sealed snapshot is not committed to this repository. The build that produced the submitted board ran from the competition kit's `input/snapshot.json`, SHA-256 `42a71213519479f3a180cc5010cbbf6bd18a2447fa0ad29e4c5122b6c9184393`. To reproduce it:
+
+```sh
+sh scripts/rebuild.sh /path/to/snapshot.json
+```
+
+The script runs `main.ts` twice into two fresh output directories and compares `board.json`, `data.js` and `dossier.json` byte-for-byte, then checks the board: 226 rows, ranks 1–226, implied values non-increasing, unique slugs, and the exact eligible set (watchlist plus every rankable pre-token protocol below the floor). The board's slug, rank and implied value are the entry's stable output across revisions.
+
+## Tests
+
+```sh
+node --test tests/model.test.mjs
+```
+
+Focused unit tests for the model (medians and shrinkage, zero and missing market cap, missing growth, future and malformed dates, duplicate slugs and chains, every farm family, stable tie-breaking) and the validation gates. The snapshot-dependent tests read the sealed snapshot from `MAKEFUN_SNAPSHOT` (default: the kit's `input/snapshot.json`) and skip when it is absent.
 
 ## The dashboard
 

@@ -1,8 +1,10 @@
-// Token Radar's dashboard, radar-3. It reads window.RADAR (written beside dashboard/
+// Token Radar's dashboard, radar-4. It reads window.RADAR (written beside dashboard/
 // by main.ts) and renders the ranked board, filters, a per-protocol detail dialog with
 // the model's own inputs and the protocol's farm plan, and the live-token tab. No
 // network: every byte it shows is in data.js. The farm plans are the board's own:
-// data.js carries each row's farm_steps exactly as board.json does.
+// data.js carries each row's farm_steps exactly as board.json does. Implied value is
+// a snapshot-based comparable proxy, not a token valuation: the detail view shows each
+// multiple's sample size, median, IQR and confidence alongside the number.
 (function () {
   'use strict';
 
@@ -141,8 +143,8 @@
   function lede() {
     return el('section', { class: 'lede' },
       el('div', null,
-        el('h1', null, DATA.watchlist_size + ' watchlist protocols, ', el('em', { text: 'ranked by implied value' })),
-        el('p', { text: 'The watchlist is the floor: every protocol with at least $' + Math.round(DATA.floor_usd / 1e6) + 'M of TVL and no token on record. The early radar adds ' + DATA.early_size + ' pre-token protocols below that floor. Implied value is a model, not a promise.' })
+        el('h1', null, DATA.watchlist_size + ' watchlist protocols, ', el('em', { text: 'ranked by a snapshot-based comparable proxy' })),
+        el('p', { text: 'The watchlist is the floor: every protocol with at least $' + Math.round(DATA.floor_usd / 1e6) + 'M of TVL and no token on record. The early radar adds ' + DATA.early_size + ' pre-token protocols below that floor. Implied value is a comparable proxy from the snapshot\u2019s own figures, not a token valuation, not a price, and not a promise that a token will be issued.' })
       ),
       el('div', { class: 'facts' },
         el('div', { class: 'fact' }, el('span', { text: 'Watchlist covered' }), el('b', { text: DATA.watchlist_size + ' / ' + DATA.watchlist_size }), el('small', { text: 'every slug on the list' })),
@@ -237,7 +239,7 @@
             sortHeader('name', 'Protocol'),
             sortHeader('tvl', 'TVL'),
             sortHeader('growth', '7d'),
-            sortHeader('age', 'Age'),
+            sortHeader('age', 'Listed'),
             sortHeader('multiple', 'Multiple'),
             sortHeader('implied', 'Implied value'),
             el('th', { scope: 'col', text: 'Token' })
@@ -249,43 +251,55 @@
   }
 
   function liveTable() {
-    var tbody = el('tbody');
-    DATA.live.forEach(function (r) {
-      tbody.appendChild(el('tr', null,
-        el('td', { class: 'num', text: 'live' }),
-        el('td', null, el('div', { class: 'name' }, el('b', { text: r.name }), el('span', { class: 'sub', text: (r.category || 'Other') + ' on ' + (r.chains && r.chains.length ? r.chains.slice(0, 2).join(', ') : 'an unnamed chain') }))),
-        el('td', { class: 'num', text: fmtUsd(r.tvl_usd) }),
-        el('td', { class: 'num ' + (r.change_7d !== null && r.change_7d >= 0 ? 'pos' : 'neg'), text: fmtPct(r.change_7d) }),
-        el('td', { class: 'num', text: fmtUsd(r.mcap_usd) }),
-        el('td', null, el('span', { class: 'status live', text: 'already trades' }))
-      ));
-    });
-    return el('div', { class: 'panel' },
-      el('div', { class: 'table-wrap' },
-        el('table', null,
-          el('caption', { class: 'sub', text: 'Token live: these protocols already trade, so their market cap is a fact, not a model. They are set aside from the pre-token ranking, and their market-cap to TVL ratios are the comparables the model prices from.' }),
-          el('thead', null, el('tr', null, el('th', { scope: 'col', text: 'Status' }), el('th', { scope: 'col', text: 'Protocol' }), el('th', { scope: 'col', text: 'TVL' }), el('th', { scope: 'col', text: '7d' }), el('th', { scope: 'col', text: 'Market cap' }), el('th', { scope: 'col', text: 'Token' }))),
-          tbody
+    function liveRowsTable(rows, captionText, statusText) {
+      var tbody = el('tbody');
+      rows.forEach(function (r) {
+        tbody.appendChild(el('tr', null,
+          el('td', { class: 'num', text: 'live' }),
+          el('td', null, el('div', { class: 'name' }, el('b', { text: r.name }), el('span', { class: 'sub', text: (r.category || 'Other') + ' on ' + (r.chains && r.chains.length ? r.chains.slice(0, 2).join(', ') : 'an unnamed chain') }))),
+          el('td', { class: 'num', text: fmtUsd(r.tvl_usd) }),
+          el('td', { class: 'num ' + (r.change_7d !== null && r.change_7d >= 0 ? 'pos' : 'neg'), text: fmtPct(r.change_7d) }),
+          el('td', { class: 'num', text: fmtUsd(r.mcap_usd) }),
+          el('td', null, el('span', { class: 'status ' + (statusText === 'already trades' ? 'live' : 'unpriced'), text: statusText }))
+        ));
+      });
+      return el('div', { class: 'panel' },
+        el('div', { class: 'table-wrap' },
+          el('table', null,
+            el('caption', { class: 'sub', text: captionText }),
+            el('thead', null, el('tr', null, el('th', { scope: 'col', text: 'Status' }), el('th', { scope: 'col', text: 'Protocol' }), el('th', { scope: 'col', text: 'TVL' }), el('th', { scope: 'col', text: '7d' }), el('th', { scope: 'col', text: 'Market cap' }), el('th', { scope: 'col', text: 'Token' }))),
+            tbody
+          )
         )
-      )
-    );
+      );
+    }
+    var shell = el('div');
+    shell.appendChild(liveRowsTable(DATA.live,
+      'Token live: these protocols already trade, so their market cap is a fact, not a model. They are set aside from the pre-token ranking, and their market-cap to TVL ratios are the comparables the model prices from.',
+      'already trades'));
+    if (DATA.live_unpriced && DATA.live_unpriced.length) {
+      shell.appendChild(liveRowsTable(DATA.live_unpriced,
+        'Token metadata present, no market price: ' + DATA.live_unpriced_size + ' protocols carry a token symbol or CoinGecko id but no usable market cap, so they are not counted as trading and none of them is used as a comparable. A zero market cap counts as no market cap.',
+        'unpriced'));
+    }
+    return shell;
   }
 
   function modelPanel() {
     var m = DATA.model;
     return el('section', { class: 'panel model' },
-      el('h2', { text: 'How implied value is computed' }),
-      el('p', { class: 'sub', text: 'Every row is scored by one function of the snapshot figures. No protocol name is special-cased, and no row is hand-picked.' }),
+      el('h2', { text: 'How the comparable proxy is computed' }),
+      el('p', { class: 'sub', text: 'Every row is scored by one function of the snapshot figures. No protocol name is special-cased, and no row is hand-picked. Implied value is a snapshot-based comparable proxy, not a token valuation: market cap is not enterprise value, and TVL measures assets deposited, not value accruing to a token.' }),
       el('div', { class: 'formula' },
         'implied = round( tvl_usd x category_multiple x growth_mult x maturity_mult x breadth_mult )'
       ),
       el('dl', null,
         el('div', null, el('dt', { text: 'Category multiple' }), el('dd', { text: 'median mcap / TVL of live ' + 'protocols in the category' })),
         el('div', null, el('dt', { text: 'Growth' }), el('dd', { text: 'clamp(7d, ' + m.growth_floor + ', ' + m.growth_cap + ')%, up x' + m.growth_up + ', down x' + m.growth_down })),
-        el('div', null, el('dt', { text: 'Maturity' }), el('dd', { text: m.maturity_floor + ' + min(age, ' + m.maturity_days + 'd) / ' + m.maturity_days + ' x ' + m.maturity_range })),
+        el('div', null, el('dt', { text: 'Time since listing' }), el('dd', { text: m.maturity_floor + ' + min(age, ' + m.maturity_days + 'd) / ' + m.maturity_days + ' x ' + m.maturity_range })),
         el('div', null, el('dt', { text: 'Breadth' }), el('dd', { text: '1 + ' + m.breadth_per_chain + ' per extra chain, to ' + (1 + m.breadth_per_chain * m.breadth_max_chains) }))
       ),
-      el('p', { class: 'sub', text: 'The category multiple is the median market-cap to TVL of the live protocols in the same category, shrunk toward the global median ' + DATA.global_multiple + 'x with a prior of ' + m.shrink_prior + ' protocols, so a thin category cannot set an extreme price. A category with fewer than ' + m.min_live_n + ' live comparables takes the global median outright. TVL and seven-day growth come from the snapshot. Age is the time since the protocol was first listed, the best record of how long it has run with no token; an unlisted age uses ' + m.unknown_age_days + ' days. A falling TVL discounts more than a rising one adds, because a launch into a shrinking base is worth less.' })
+      el('p', { class: 'sub', text: 'The category multiple is the median market-cap to TVL of the live protocols in the same category, shrunk toward the global median ' + DATA.global_multiple + 'x with a prior of ' + m.shrink_prior + ' protocols, so a thin category cannot set an extreme price. A category with fewer than ' + m.min_live_n + ' live comparables takes the global median outright. TVL and seven-day growth come from the snapshot. Age is the time since the protocol was first listed on DefiLlama; a listing date is not necessarily the launch date. A falling TVL discounts more than a rising one adds, because a launch into a shrinking base is worth less. The snapshot carries no FDV, so the proxy uses circulating market cap; an FDV/TVL sensitivity cannot be computed from these fields, and the two measures are never mixed.' })
     );
   }
 
@@ -294,7 +308,7 @@
       el('h2', { text: 'How to read the farm plan' }),
       el('p', { class: 'sub', text: 'Every row carries six steps, each with its cost and its time. The steps are derived from the protocol\u2019s own record, never written by hand for a name.' }),
       el('ol', null,
-        el('li', { text: 'Start clean: a fresh wallet that holds only the funds for this farm, its seed phrase offline. The gas token follows the chain.' }),
+        el('li', { text: 'Start clean: a fresh wallet that holds only the funds for this farm, its seed phrase offline. Network fees are variable and chain-specific: check the current fee and the fee asset before sending, never a fixed dollar figure.' }),
         el('li', { text: 'Enter with the category\u2019s own action — supply on a lender, liquidity on a DEX, a bridge, a stake — with capital from the protocol\u2019s TVL: $200 above $1B, $100 above $100M, $50 below.' }),
         el('li', { text: 'Stay active weekly: one qualifying action that fits what the protocol does — borrow and repay on a lender, swap and collect fees on a DEX, vote on a governance protocol — so the wallet counts in more than one snapshot.' }),
         el('li', { text: 'Hold: 90 days for a protocol under six months old, 60 under eighteen months, 45 above, so the activity spans snapshots.' }),
@@ -310,10 +324,10 @@
     return el('section', { class: 'panel notes' },
       el('h2', { text: 'What the board leaves out, and why' }),
       el('ul', null,
-        el('li', { text: DATA.excluded_above_floor + ' pre-token protocols at or above the $' + Math.round(DATA.floor_usd / 1e6) + 'M floor are not ranked: the watchlist leaves them out as bridges, liquid-staking or restaked products, or products of a parent protocol, so they are not standalone launches. By their own category, ' + (b.bridges + b.liquid_staking + b.restaked_btc) + ' of the ' + DATA.excluded_above_floor + ' are bridges, liquid-staking or restaked products — ' + b.bridges + ' bridges, ' + b.liquid_staking + ' liquid-staking and ' + b.restaked_btc + ' restaked BTC — among them Base Bridge, Binance staked ETH and CCIP: a chain\u2019s own bridge, an exchange\u2019s staked-ETH product and a messaging protocol. The other ' + b.other + ' are left out by the watchlist\u2019s own rule, which lists only standalone launches at or above the floor.' }),
+        el('li', { text: DATA.excluded_above_floor + ' pre-token protocols at or above the $' + Math.round(DATA.floor_usd / 1e6) + 'M floor are not ranked: the watchlist leaves them out. By their own category, ' + (b.bridges + b.liquid_staking + b.restaked_btc) + ' of the ' + DATA.excluded_above_floor + ' are bridges, liquid-staking or restaked products — ' + b.bridges + ' bridges, ' + b.liquid_staking + ' liquid-staking and ' + b.restaked_btc + ' restaked BTC — among them Base Bridge, Binance staked ETH and CCIP: a chain\u2019s own bridge, an exchange\u2019s staked-ETH product and a messaging protocol. The other ' + b.other + ' are excluded by the supplied watchlist rule; the snapshot fields do not establish why.' }),
         el('li', { text: 'The watchlist is a floor, never a ceiling: the early radar ranks every pre-token protocol below the floor that is not an exchange and not a versioned pool.' }),
         el('li', { text: 'A protocol is called pre-token because its record carries no token, never because it has none: a record may miss a token that exists.' }),
-        el('li', { text: 'Implied value is the entry\u2019s own claim from the snapshot\u2019s figures. It is not a price, not a prediction that a token will be issued, and not financial advice.' })
+        el('li', { text: 'Implied value is a snapshot-based comparable proxy from the snapshot\u2019s figures. It is not a token valuation, not a price, not a prediction that a token will be issued, and not financial advice.' })
       )
     );
   }
@@ -342,15 +356,17 @@
       el('div', { class: 'equation' },
         el('div', null, el('span', { text: 'TVL' }), el('b', { class: 'num', text: fmtUsd(row.tvl_usd) })),
         el('div', null, el('span', { text: 'Category multiple' }), el('b', { class: 'num', text: fmtMult(row.category_multiple) })),
-        el('div', null, el('span', { text: 'Seven-day growth' }), el('b', { class: 'num', text: fmtPct(row.change_7d) })),
-        el('div', null, el('span', { text: 'Age with no token' }), el('b', { class: 'num', text: fmtAge(row.age_days) })),
+        el('div', null, el('span', { text: 'Live comparables' }), el('b', { class: 'num', text: row.category_live_n >= DATA.model.min_live_n ? row.category_live_n + ' in ' + (row.category || 'Other') : 'global median' })),
+        el('div', null, el('span', { text: 'Comparable median / IQR' }), el('b', { class: 'num', text: fmtMult(row.category_median) + ' / ' + fmtMult(row.category_iqr) })),
+        el('div', null, el('span', { text: 'Comparable confidence' }), el('b', { class: 'num', text: row.confidence === 'low' ? 'low — thin or highly dispersed comparables' : 'standard' })),
+        el('div', null, el('span', { text: 'Seven-day growth' }), el('b', { class: 'num', text: row.growth_missing ? 'not reported' : fmtPct(row.change_7d) })),
+        el('div', null, el('span', { text: 'Time since DefiLlama listing' }), el('b', { class: 'num', text: fmtAge(row.age_days) })),
         el('div', null, el('span', { text: 'Growth multiplier' }), el('b', { class: 'num', text: String(row.growth_multiplier) })),
         el('div', null, el('span', { text: 'Breadth multiplier' }), el('b', { class: 'num', text: String(row.breadth_multiplier) })),
-        el('div', null, el('span', { text: 'Maturity multiplier' }), el('b', { class: 'num', text: String(row.maturity_multiplier) })),
-        el('div', null, el('span', { text: 'Live comparables' }), el('b', { class: 'num', text: row.category_live_n >= DATA.model.min_live_n ? row.category_live_n + ' in ' + (row.category || 'Other') : 'global median' })),
+        el('div', null, el('span', { text: 'Listing-age multiplier' }), el('b', { class: 'num', text: String(row.maturity_multiplier) })),
         el('div', { class: 'total' }, el('span', { text: 'Implied value' }), el('b', { class: 'num', text: fmtUsd(row.implied_value_usd) }))
       ),
-      el('p', { class: 'sub', text: 'Model ' + DATA.model_version + ': the same function scores every protocol. The page recomputes this row as ' + fmtUsd(recomputed) + (matches ? ', the same number the board carries.' : ' — which differs from the board: the data would be stale.') + ' This is an estimate, not a price.' })
+      el('p', { class: 'sub', text: 'Model ' + DATA.model_version + ': the same function scores every protocol. The page recomputes this row as ' + fmtUsd(recomputed) + (matches ? ', the same number the board carries.' : ' — which differs from the board: the data would be stale.') + ' This is a snapshot-based comparable proxy, not a token valuation or a price.' + (row.growth_missing ? ' Seven-day growth was not reported for this protocol in the snapshot, so the proxy treats it as 0.' : '') })
     ));
     dialog.appendChild(el('section', { class: 'detail-section' },
       el('h3', { text: 'Farm plan' }),
@@ -371,7 +387,7 @@
   function foot() {
     return el('p', { class: 'foot' },
       el('b', { text: 'Token Radar · ' + DATA.model_version + ' model' }),
-      ' — snapshot ' + DATA.as_of + ', ' + DATA.board_size + ' pre-token protocols ranked. Source: the DefiLlama protocol index, as sealed in the competition snapshot. Implied values are a model, not prices.'
+      ' — snapshot ' + DATA.as_of + ', ' + DATA.board_size + ' pre-token protocols ranked. Source: the DefiLlama protocol index, as sealed in the competition snapshot. Implied values are a snapshot-based comparable proxy, not token valuations or prices.'
     );
   }
 

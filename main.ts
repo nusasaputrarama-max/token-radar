@@ -14,7 +14,7 @@
 // Outside the grader's container, MAKEFUN_OUTPUT_DIR stands in for /output:
 //   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts --input ../input/snapshot.json
 
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { boardIssue, buildRadar, dataScript, parseSnapshot } from './lib/model.ts';
@@ -53,6 +53,11 @@ if (issue !== null) {
 }
 
 mkdirSync(out, { recursive: true });
+// Clean the generated paths first, so a stale board, dataset, dashboard file,
+// screenshot or dossier can never survive into this run's output.
+for (const name of ['board.json', 'data.js', 'dossier.json', 'dashboard', 'screenshots']) {
+  rmSync(join(out, name), { recursive: true, force: true });
+}
 writeFileSync(join(out, 'board.json'), `${JSON.stringify({ rows: board })}\n`);
 writeFileSync(join(out, 'data.js'), dataScript(radar));
 
