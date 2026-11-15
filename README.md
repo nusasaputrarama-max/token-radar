@@ -24,7 +24,7 @@ The snapshot holds 758 protocols at or above $5M TVL, as of 2026-11-14. The boar
 
 63 pre-token protocols at or above the floor are **not** ranked: the watchlist leaves them out as bridges, liquid-staking or restaked products, or products of a parent protocol, so they are not standalone launches. The dashboard says so, with the counts.
 
-## The model (radar-2)
+## The model (radar-3)
 
 Implied value is a comparable-multiple valuation, computed from the snapshot itself — no protocol name is ever special-cased:
 
@@ -37,7 +37,7 @@ implied = round( tvl_usd x category_multiple x growth_mult x maturity_mult x bre
 - **Maturity** — 0.70 + 0.30 × min(age, 1460 days) / 1460. A protocol that has run longer with no token carries more pent-up launch value. Unknown age counts as 365 days.
 - **Breadth** — 1 + 0.02 per extra chain, to 1.20. Each additional chain is distribution surface for a launch.
 
-Every row also carries a six-step farm plan derived from its own category, chains, TVL and age: the action, what it costs, and how long it takes. The dashboard recomputes each row from the same figures, so the page and `board.json` carry the same arithmetic.
+Every row also carries a six-step farm plan derived from its own category, chains, TVL and age: the entry action, a weekly action, a hold, a rewards check and a log — each fitted to the protocol's category family (lending, DEX, bridge, staking, and so on), plus what it costs and how long it takes. The dashboard recomputes each row from the same figures, so the page and `board.json` carry the same arithmetic.
 
 ## The dashboard
 

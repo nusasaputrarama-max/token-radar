@@ -1,4 +1,4 @@
-// Token Radar's model, version radar-2: one sealed snapshot in, one ranked board out.
+// Token Radar's model, version radar-3: one sealed snapshot in, one ranked board out.
 //
 // The board ranks every protocol on the snapshot's watchlist (the floor) plus every
 // rankable pre-token protocol below the watchlist floor (the early radar). It does not
@@ -90,8 +90,10 @@ export const MODEL: ModelConstants = {
   breadth_max_chains: 10,
 };
 
-/** The model's version label: the dashboard names it. */
-export const MODEL_VERSION = 'radar-2';
+/** The model's version label: the dashboard names it. v3 keeps radar-2's valuation and
+ * makes the farm plan category-specific: steps 3, 5 and 6 used to be one shared
+ * template for every row, so only step 2 differed. */
+export const MODEL_VERSION = 'radar-3';
 
 /** How many live-token protocols the Live tab carries, by market cap. */
 export const LIVE_ROWS = 24;
@@ -415,10 +417,104 @@ function actionFor(p: SnapshotProtocol, capital: number, chain: string): string 
   return `Deposit $${capital} of USDC into ${name} on ${chain} and leave the position open.`;
 }
 
+/** The farm-plan family a category belongs to, so the weekly action, the rewards
+ * check and the log all follow what the protocol actually does. No protocol name
+ * is ever special-cased: the family comes from the snapshot's own category. */
+export function familyFor(p: SnapshotProtocol): string {
+  const c = (p.category ?? '').toLowerCase();
+  if (c.includes('lend') || c.includes('cdp') || c.includes('collateral')) return 'lending';
+  if (c.includes('dex') || c.includes('yield') || c.includes('leveraged farm') || c.includes('farm') || c.includes('liquidity manager')) return 'dex';
+  if (c.includes('bridge')) return 'bridge';
+  if (c.includes('staking') || c.includes('restak')) return 'staking';
+  if (c.includes('derivative') || c.includes('basis trading')) return 'derivatives';
+  if (c.includes('prediction')) return 'prediction';
+  if (c.includes('curator') || c.includes('allocator') || c.includes('aggregator')) return 'curator';
+  if (c.includes('stablecoin')) return 'stable';
+  if (c.includes('rwa') || c.includes('anchor btc') || c.includes('decentralized btc')) return 'rwa';
+  if (c.includes('insurance')) return 'insurance';
+  if (c.includes('governance')) return 'governance';
+  if (c === 'chain') return 'chain';
+  if (c.includes('payment') || c.includes('card issuer')) return 'payments';
+  if (c.includes('index')) return 'indexes';
+  if (c.includes('cedefi')) return 'cedefi';
+  return 'other';
+}
+
+/** The weekly qualifying action, specific to the protocol's family. */
+function weeklyFor(p: SnapshotProtocol, capital: number, chain: string): string {
+  const name = p.name;
+  switch (familyFor(p)) {
+    case 'lending': return `Each week, borrow a small amount against the $${capital} supply position on ${name} and repay it the same week, keeping the collateral ratio healthy.`;
+    case 'dex': return `Each week, swap a small amount through ${name}'s main pool on ${chain} or collect the fees the $${capital} liquidity position earned.`;
+    case 'bridge': return `Each week, bridge a small amount through ${name} to ${chain} and use the bridged funds in the destination app, instead of leaving them idle.`;
+    case 'staking': return `Each week, restake the staking rewards ${name} paid on ${chain} and keep the receipt token in the same wallet.`;
+    case 'derivatives': return `Each week, open and close one small hedged position on ${name} and keep the margin well above the liquidation level.`;
+    case 'prediction': return `Each week, place one small position on a new market on ${name} and let it settle before placing the next one.`;
+    case 'curator': return `Each week, check the vault's allocation on ${name} and add a small top-up or rebalance when the curator shifts the strategy.`;
+    case 'stable': return `Each week, mint or redeem a small amount of the stable asset through ${name} on ${chain} and keep the peg in view.`;
+    case 'rwa': return `Each week, check the yield ${name} accrued on ${chain} and add a small top-up while the position is still earning.`;
+    case 'insurance': return `Each week, check that the cover bought from ${name} on ${chain} is still active and top it up before it lapses.`;
+    case 'governance': return `Each week, vote in a new governance round on ${name} and keep the deposit staked while the round runs.`;
+    case 'chain': return `Each week, use one app built on ${chain} through ${name} and keep a small balance active on the chain.`;
+    case 'payments': return `Each week, spend a small amount through ${name} on ${chain} and keep the card or payment balance topped up.`;
+    case 'indexes': return `Each week, check the index ${name} tracks on ${chain} and rebalance the small holding when its weights shift.`;
+    case 'cedefi': return `Each week, use one CeDeFi product on ${name} and move a small amount between its on-chain and off-chain legs.`;
+    default: return `Each week, use ${name} on ${chain} once more — a deposit, a swap, or a vote — so the wallet stays active in its app.`;
+  }
+}
+
+/** Where the rewards for this family are checked, before any withdrawal. */
+function claimFor(p: SnapshotProtocol): string {
+  const name = p.name;
+  switch (familyFor(p)) {
+    case 'lending': return `Open ${name}'s own points or borrow-rewards page and check the accrued points for the supply and borrow activity before withdrawing.`;
+    case 'dex': return `Open ${name}'s own rewards page and check the trading fees and points the liquidity position earned before withdrawing.`;
+    case 'bridge': return `Open ${name}'s own points page and check the volume credited for each bridge before withdrawing.`;
+    case 'staking': return `Open ${name}'s own rewards page and check the staking yield and points accrued before unstaking anything.`;
+    case 'derivatives': return `Open ${name}'s own trading-rewards page and check the volume and points credited before closing the position.`;
+    case 'prediction': return `Open ${name}'s own rewards page and check the points for settled markets before withdrawing.`;
+    case 'curator': return `Open ${name}'s own points page and check the vault shares and points accrued before withdrawing.`;
+    case 'stable': return `Open ${name}'s own rewards page and check the points for minting and holding before redeeming.`;
+    case 'rwa': return `Open ${name}'s own rewards page and check the accrued yield and points before redeeming anything.`;
+    case 'insurance': return `Open ${name}'s own rewards page and check the cover status and any points earned before the policy ends.`;
+    case 'governance': return `Open ${name}'s own rewards page and check the voting points and incentives earned before withdrawing.`;
+    case 'chain': return `Open ${name}'s own rewards page and check the activity credited on its chain before moving funds away.`;
+    case 'payments': return `Open ${name}'s own rewards page and check the cashback or points from the spending before withdrawing.`;
+    case 'indexes': return `Open ${name}'s own rewards page and check the points for holding the index before selling.`;
+    case 'cedefi': return `Open ${name}'s own rewards page and check the points credited for the activity before withdrawing.`;
+    default: return `Open ${name}'s own points or rewards page and check what the activity earned before withdrawing.`;
+  }
+}
+
+/** What this family's farm log must record, so the position can be repeated or unwound. */
+function logFor(p: SnapshotProtocol, capital: number): string {
+  const name = p.name;
+  switch (familyFor(p)) {
+    case 'lending': return `Log the wallet, the supplied amount, each borrow and repayment, and the collateral ratio at each step, so the position can be unwound safely.`;
+    case 'dex': return `Log the wallet, the pool, the deposit dates, and the fees collected, so the position's return can be compared with its impermanent loss.`;
+    case 'bridge': return `Log the wallet, every bridge transaction hash, the amounts, and the destination chain, so a stuck bridge can be traced.`;
+    case 'staking': return `Log the wallet, the staked amount, the receipt token balance, and each restake, so the yield can be checked against the receipt token's value.`;
+    case 'derivatives': return `Log the wallet, the margin, the entry and exit prices, and the funding paid, so the trade's cost is known before the next round.`;
+    case 'prediction': return `Log the wallet, each market, the stake, and the outcome, so winning and losing markets can be compared.`;
+    case 'curator': return `Log the wallet, the vault, the share price at each deposit, and every top-up, so the return can be checked against the share price.`;
+    case 'stable': return `Log the wallet, the minted amount, the collateral behind it, and the peg at each step, so a depeg can be spotted early.`;
+    case 'rwa': return `Log the wallet, the amount minted, the yield accrued, and the redemption terms, so the position can be exited on schedule.`;
+    case 'insurance': return `Log the wallet, the cover amount, the premium paid, and the expiry date, so the policy is never left to lapse unnoticed.`;
+    case 'governance': return `Log the wallet, each proposal voted on, the deposit, and the incentives received, so the next round can be repeated.`;
+    case 'chain': return `Log the wallet, the apps used, and the dates, so the on-chain activity can be shown in one place.`;
+    case 'payments': return `Log the wallet, each payment, and the rewards earned, so the spending can be matched to the points.`;
+    case 'indexes': return `Log the wallet, the index composition, and each rebalance, so the holding can be compared with the index.`;
+    case 'cedefi': return `Log the wallet, each product used, and the amounts, so the CeDeFi activity can be shown in one place.`;
+    default: return `Write the wallet, the dates and every transaction in a farm log so you can repeat the position or unwind it.`;
+  }
+}
+
 /**
  * A protocol's farm plan: six steps, each an action with a cost and a time. The plan is
  * derived from the protocol's own record (category, chains, TVL, age), never from a
- * hand-written list of names.
+ * hand-written list of names. Step 2 is the category's entry action; steps 3, 5 and 6
+ * are the same family's weekly action, rewards check and log, so every step fits
+ * what the protocol actually does.
  */
 export function farmSteps(p: SnapshotProtocol, age: number | null): FarmStep[] {
   const chain = chainOf(p);
@@ -437,7 +533,7 @@ export function farmSteps(p: SnapshotProtocol, age: number | null): FarmStep[] {
       time: '15 minutes to set up',
     },
     {
-      text: `Make one qualifying action each week, such as a deposit, a borrow, a swap or a vote.`,
+      text: weeklyFor(p, capital, chain),
       cost: 'about $2 of gas a week',
       time: '10 minutes a week',
     },
@@ -447,12 +543,12 @@ export function farmSteps(p: SnapshotProtocol, age: number | null): FarmStep[] {
       time: `${hold} days`,
     },
     {
-      text: `Before you withdraw, open the protocol's own points or rewards page and claim only from the link it publishes.`,
+      text: claimFor(p),
       cost: 'no fee to check, and never pay to claim',
       time: '10 minutes',
     },
     {
-      text: `Write the wallet, the dates and every transaction in a farm log so you can repeat the position or unwind it.`,
+      text: logFor(p, capital),
       cost: 'nothing but the log',
       time: '5 minutes',
     },
