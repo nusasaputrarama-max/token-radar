@@ -14,11 +14,11 @@
 // Outside the grader's container, MAKEFUN_OUTPUT_DIR stands in for /output:
 //   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts --input ../input/snapshot.json
 
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { boardIssue, buildRadar, dataScript, parseSnapshot } from './lib/model.ts';
-import { safeOutputPath } from './lib/output-path.ts';
+import { assertSafeCleanupTarget, safeOutputPath, verifyOutputDirTrusted } from './lib/output-path.ts';
 import { buildDossier } from './vendor/makefun-board.ts';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
@@ -53,12 +53,28 @@ if (issue !== null) {
   process.exit(1);
 }
 
-mkdirSync(out, { recursive: true });
+const created = mkdirSync(out, { recursive: true, mode: 0o700 });
+if (created !== undefined) {
+  // Newly created directories are private to this run. The platform may ignore
+  // the mode on intermediate directories, so set it explicitly on each
+  // directory this call created (created..out) and nothing else.
+  let dir = out;
+  while (true) {
+    chmodSync(dir, 0o700);
+    if (dir === created) break;
+    dir = dirname(dir);
+  }
+}
 // Re-check after directory creation so a newly introduced symlink cannot redirect cleanup.
 safeOutputPath(out, here);
+// Fail closed unless the directory is a private, owner-held directory under
+// parents no untrusted local writer can swap a component in.
+verifyOutputDirTrusted(out);
 // Clean the generated paths first, so a stale board, dataset, dashboard file,
-// screenshot or dossier can never survive into this run's output.
+// screenshot or dossier can never survive into this run's output. Each target
+// is re-validated immediately before its own deletion.
 for (const name of ['board.json', 'data.js', 'dossier.json', 'dashboard', 'screenshots']) {
+  assertSafeCleanupTarget(out, name);
   rmSync(join(out, name), { recursive: true, force: true });
 }
 writeFileSync(join(out, 'board.json'), `${JSON.stringify({ rows: board })}\n`);
