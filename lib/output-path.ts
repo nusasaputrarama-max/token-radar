@@ -21,12 +21,15 @@ import { join, parse, resolve, sep } from 'node:path';
  *    and again right after creation.
  * 2. main.ts creates newly-made output directories private (mode 0700).
  * 3. `verifyOutputDirTrusted` (below) requires the created directory to be a
- *    real directory owned by the current user and not group/other-writable,
+ *    real directory owned by the current user and not writable by *others*,
  *    and requires every existing ancestor's parent to be unwritable by
- *    *others* unless the sticky bit protects it. Group-writable ancestors are
- *    accepted: the model trusts the current user's own group, and the output
- *    directory itself is still required to be private. On a machine where the
- *    group is shared with untrusted users, run under a private parent.
+ *    *others* unless the sticky bit protects it. Group-writable paths are
+ *    accepted: the model trusts the current user's own group — a caller that
+ *    pre-creates the output directory with default modes under a
+ *    group-writable umask (the repository's own `scripts/rebuild.sh` does
+ *    this) must keep working. On a machine where the group is shared with
+ *    untrusted users, run under a private parent and a private output
+ *    directory.
  * 4. `assertSafeCleanupTarget` re-validates each cleanup target immediately
  *    before its own deletion, so a swap after validation is caught, not
  *    followed.
@@ -71,21 +74,21 @@ export function safeOutputPath(outputPath: string, repositoryRoot: string): stri
 }
 
 /**
- * Fail closed unless the output directory is a private, owner-held directory
- * under parents no untrusted local writer can swap a component in. Call after
- * the directory exists (main.ts creates it private first). Throws on:
- * a missing or non-directory path, a symlinked final component or ancestor
- * (the resolved path must equal the lexical path), ownership by another user,
- * group/other write permission on the directory itself, or any existing
- * ancestor component whose parent is writable by *others* without the sticky
- * bit — such a parent would let any other local user replace the component
- * with a symlink before cleanup runs. A sticky-bit parent is accepted: it
- * stops non-owners from unlinking or replacing entries they do not own, so a
- * swap of an existing component is blocked there. Group-writable ancestors
- * are accepted (the current user's own group is trusted; the output directory
- * itself must still be private), so ordinary group-writable workspaces do not
- * fail this check — on a machine where the group is shared with untrusted
- * users, run under a private parent.
+ * Fail closed unless the output directory is an owner-held directory under
+ * parents no untrusted local writer can swap a component in. Call after the
+ * directory exists (main.ts creates it private first). Throws on: a missing
+ * or non-directory path, a symlinked final component or ancestor (the
+ * resolved path must equal the lexical path), ownership by another user,
+ * *other* write permission on the directory itself, or any existing ancestor
+ * component whose parent is writable by *others* without the sticky bit —
+ * such a parent would let any other local user replace the component with a
+ * symlink before cleanup runs. A sticky-bit parent is accepted: it stops
+ * non-owners from unlinking or replacing entries they do not own, so a swap
+ * of an existing component is blocked there. Group-writable paths are
+ * accepted (the current user's own group is trusted — callers that pre-create
+ * the output directory with default modes under a group-writable umask must
+ * keep working); on a machine where the group is shared with untrusted
+ * users, run under a private parent and a private output directory.
  */
 export function verifyOutputDirTrusted(outputPath: string): string {
   const output = resolve(outputPath);
@@ -106,8 +109,8 @@ export function verifyOutputDirTrusted(outputPath: string): string {
   if (typeof process.getuid === 'function' && st.uid !== process.getuid()) {
     throw new Error(`unsafe output path: ${output} is not owned by the current user`);
   }
-  if ((st.mode & 0o022) !== 0) {
-    throw new Error(`unsafe output path: ${output} is writable by group or others`);
+  if ((st.mode & 0o002) !== 0) {
+    throw new Error(`unsafe output path: ${output} is writable by others`);
   }
   const root = parse(output).root;
   let current = root;

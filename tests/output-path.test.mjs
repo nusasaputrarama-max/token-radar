@@ -59,15 +59,18 @@ test('verifyOutputDirTrusted accepts a private owner-held directory', () => {
   }
 });
 
-test('verifyOutputDirTrusted rejects group/other-writable and symlinked directories', () => {
+test('verifyOutputDirTrusted rejects other-writable and symlinked directories', () => {
   const root = mkdtempSync(join(tmpdir(), 'token-radar-trust-'));
   try {
     const out = join(root, 'out');
     mkdirSync(out);
     chmodSync(out, 0o777);
-    assert.throws(() => verifyOutputDirTrusted(out), /writable by group or others/);
+    assert.throws(() => verifyOutputDirTrusted(out), /writable by others/);
+    // Group-writable is accepted: the model trusts the current user's own
+    // group (callers that pre-create the output directory with default modes
+    // under a group-writable umask must keep working).
     chmodSync(out, 0o770);
-    assert.throws(() => verifyOutputDirTrusted(out), /writable by group or others/);
+    assert.equal(verifyOutputDirTrusted(out), out);
     chmodSync(out, 0o700);
     assert.equal(verifyOutputDirTrusted(out), out);
     const alias = join(root, 'out-alias');
