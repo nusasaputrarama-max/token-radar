@@ -99,3 +99,31 @@ live entry and resubmission needs Rama's approval of this exact commit; no trans
 bundle (main agent bundles later). The already-pushed `bee5190` commit was not
 rewritten or force-pushed.
 
+
+
+---
+
+## Follow-up independent review — 2026-11-17 (GPT audit v2.6)
+
+**Reviewed main HEAD:** `3b61c7d0d3515586ea7c6df9e07ce74007df50a0`  
+**Audit:** `docs/GPT_AUDIT_V26_2026-11-17.md`
+
+A three-commit output-cleanup batch landed on main (`ce07d7d`, `d868ba3`, `3b61c7d`). It adds a path guard, integrates checks before and after output-directory creation, and adds four focused tests. PR #2 is closed and its branch is identical to main. Static unsafe paths are now rejected; a local check-then-use race remains between the final validation and recursive deletion. The PR description reports four focused tests passing on Node 22.16.0, but this review did not independently rerun them.
+
+**Unresolved findings remain OPEN:**
+
+1. Farm-plan entry/weekly actions and points/rewards claims still infer capabilities from broad categories without protocol-specific evidence.
+2. Growth and listing-age weights remain uncalibrated; no deterministic rank-sensitivity report exists.
+3. Yield Aggregator is still classified as DEX because the yield substring rule precedes aggregator; its fixture does not assert the expected family.
+4. Snapshot parsing still accepts future listing dates, silently nulls non-string listing dates, retains negative finite market caps, and deduplicates chains by exact raw string only. Category normalization is inconsistent across CEX exclusion and family classification.
+5. boardIssue() checks that rank values are contiguous after sorting, but not that row i carries rank i+1; it also does not enforce slug order for equal implied values.
+6. The sealed snapshot is absent from the public repository. The 226-row rebuild and byte-identity claims were not independently reproduced. Main HEAD has no combined status checks, and the available PR-triggered workflow-run query returned zero.
+7. Manual keyboard, screen-reader and physical-device accessibility testing remains NOT TESTED.
+
+**Attribution/access blocker:** GitHub records all three output-path commits with nusasaputrarama-max as author and committer. The current collaborator permission lookup reports `muse` as `read`. Do not attribute this batch to Muse. Muse needs repository Write permission (or a verified authorized implementer must take over) before code remediation can be attributed or pushed under that identity.
+
+**Verification limitation:** a read-only shallow clone was attempted to execute tests, but failed before checkout because github.com DNS could not be resolved. No tests or rebuild were run by this review. The dashboard passed static network-reference inspection only; no browser runtime test was performed.
+
+Next implementation work must remain on a dedicated feature branch with focused negative tests and exact-head non-deploy CI. Preserve the submitted board and model constants unless Rama explicitly approves a new model version. The sealed snapshot must remain private if competition rules restrict it; provide a permitted reviewer copy or a reproducible evidence bundle instead.
+
+**Safety boundary:** no deployment, make.fun resubmission, token launch, signing, transaction, purchase, funds movement or spending is authorized. Acceptance remains OPEN.
