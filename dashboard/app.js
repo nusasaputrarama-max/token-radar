@@ -306,13 +306,13 @@
   function farmPanel() {
     return el('section', { class: 'panel farm' },
       el('h2', { text: 'How to read the farm plan' }),
-      el('p', { class: 'sub', text: 'Every row carries six steps, each with its cost and its time. The steps are derived from the protocol\u2019s own record, never written by hand for a name.' }),
+      el('p', { class: 'sub', text: 'Every row carries six steps, each with its cost and its time. The steps are derived from the protocol\u2019s own record, never written by hand for a name. No step instructs a deposit, trade, mint, borrow, bridge, stake, spend or claim: every action is verify-first, because the snapshot lists no supported assets, pools, vaults, routes or rewards programmes for any protocol.' }),
       el('ol', null,
         el('li', { text: 'Start clean: a fresh wallet that holds only the funds for this farm, its seed phrase offline. Network fees are variable and chain-specific: check the current fee and the fee asset before sending, never a fixed dollar figure.' }),
-        el('li', { text: 'Enter with the category\u2019s own action — supply on a lender, liquidity on a DEX, a bridge, a stake — with capital from the protocol\u2019s TVL: $200 above $1B, $100 above $100M, $50 below.' }),
-        el('li', { text: 'Stay active weekly: one qualifying action that fits what the protocol does — borrow and repay on a lender, swap and collect fees on a DEX, vote on a governance protocol — so the wallet counts in more than one snapshot.' }),
-        el('li', { text: 'Hold: 90 days for a protocol under six months old, 60 under eighteen months, 45 above, so the activity spans snapshots.' }),
-        el('li', { text: 'Claim from the protocol\u2019s own points or rewards page, and check what the activity earned before withdrawing. Never pay to claim.' }),
+        el('li', { text: 'Verify first: check the protocol\u2019s official app for what it actually supports on its chain, and do not move any funds until the app shows a supported action. Capital comes from the protocol\u2019s TVL: $200 above $1B, $100 above $100M, $50 below — but only once an action is verified.' }),
+        el('li', { text: 'Stay active weekly: re-check what you verified on the official app and confirm it still holds before doing anything, so the wallet counts in more than one snapshot. The plan never tells you to borrow, bridge, restake, mint, trade or vote on a guess.' }),
+        el('li', { text: 'Hold: 90 days for a protocol under six months old, 60 under eighteen months, 45 above, so the activity spans snapshots. The hold applies only if you verified a supported action and took a position; if nothing was supported, do not open one on a guess.' }),
+        el('li', { text: 'Claim: check the protocol\u2019s official app and docs for whether it runs any points or rewards programme at all, and what it actually rewards — the snapshot establishes no programme or rewards page, so never assume one exists. Never pay to claim.' }),
         el('li', { text: 'Log it: the wallet, the amounts, the dates and every transaction, in the form that family\u2019s position needs, so the position can be repeated or unwound.' })
       ),
       el('p', { class: 'sub', text: 'Steps two, three, five and six follow the protocol\u2019s category family — lending, DEX, bridge, staking, derivatives, prediction, curator, stablecoin, RWA, insurance, governance, chain, payments, indexes, CeDeFi, or other — because a farm that ignores what the protocol does is not a farm. The family comes from the snapshot\u2019s own category.' })
