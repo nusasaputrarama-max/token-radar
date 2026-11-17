@@ -1,4 +1,4 @@
-// Token Radar's model, version radar-4: one sealed snapshot in, one ranked board out.
+// Token Radar's model, version radar-5: one sealed snapshot in, one ranked board out.
 //
 // The board ranks every protocol on the snapshot's watchlist (the floor) plus every
 // rankable pre-token protocol below the watchlist floor (the early radar). It does not
@@ -106,12 +106,14 @@ export const MODEL: ModelConstants = {
   breadth_max_chains: 10,
 };
 
-/** The model's version label: the dashboard names it. radar-4 keeps radar-3's valuation
- * (the same multiples, growth, maturity and breadth arithmetic, so the board's
- * slug/rank/implied values do not move) and adds disclosure around it: sample size and
- * dispersion per multiple, an explicit missing-growth state, and farm plans whose
- * entry actions route through one family classifier with no invented deposits. */
-export const MODEL_VERSION = 'radar-4';
+/** The model's version label: the dashboard names it. radar-5 keeps radar-4's valuation
+ * arithmetic exactly (the same multiples, growth, maturity and breadth, so the board's
+ * slug/rank/implied values do not move) and changes only what audit v2.5 asked for:
+ * farm plans are verify-first and non-transactional throughout, the family
+ * classifier normalizes labels and orders specific rules first, and chain labels
+ * are deduplicated on a normalized key. Sensitivity diagnostics are separate and
+ * never change the submitted model. */
+export const MODEL_VERSION = 'radar-5';
 
 /** How many live-token protocols the Live tab carries, by market cap. */
 export const LIVE_ROWS = 24;
@@ -520,45 +522,56 @@ function holdDaysFor(age: number | null): number {
 /**
  * The category's one action, in the words a farmer can follow. The action routes
  * through familyFor(), the same classifier the weekly action, the rewards check and
- * the log use, so no family falls through to a deposit it cannot take. Where the
- * snapshot cannot support a safe action, the plan says to verify first and never
- * invents a deposit. Leveraged or speculative families (derivatives, prediction,
- * insurance, RWA) carry an explicit risk note: they are not routine low-risk farming.
+ * the log use. Every action is verify-first and non-transactional: the snapshot
+ * carries no evidence of supported assets, pools, vaults, routes, rewards pages or
+ * points programmes for any protocol, so no step instructs a deposit, trade, mint,
+ * borrow, bridge, stake or claim. Each family names exactly what to verify on the
+ * official app before any funds move, and says plainly not to act until the app
+ * shows the action is supported. Leveraged or speculative families (derivatives,
+ * prediction, insurance, RWA) carry an explicit risk note: they are not routine
+ * low-risk farming.
  */
 export function actionFor(p: SnapshotProtocol, capital: number, chain: string): string {
   const name = p.name;
   switch (familyFor(p)) {
-    case 'lending': return `Supply $${capital} of USDC to ${name} on ${chain} and leave the position open.`;
-    case 'dex': return `Provide $${capital} of liquidity to ${name}'s main pool on ${chain} and leave the position open.`;
-    case 'bridge': return `Bridge $${capital} of USDC through ${name}; verify the supported route on the official app before sending.`;
-    case 'staking': return `Stake $${capital} of the chain's staking asset through ${name} and keep the receipt token.`;
-    case 'derivatives': return `Deposit $${capital} of USDC as margin on ${name} and open one small hedged position. Leveraged activity is not routine low-risk farming: size it small and keep margin well above the liquidation level.`;
-    case 'prediction': return `Fund $${capital} and place one prediction-market position on ${name}. Prediction markets are speculative, not routine low-risk farming: stake only what you can lose.`;
-    case 'curator': return `Deposit $${capital} into a ${name} vault on ${chain} and keep the vault shares.`;
-    case 'stable': return `Mint or deposit $${capital} of the stable asset through ${name} on ${chain}.`;
-    case 'rwa': return `Mint $${capital} of ${name}'s yield-bearing asset on ${chain} and hold it. RWA assets carry issuer and redemption risk, not routine low-risk farming: check the redemption terms before minting.`;
-    case 'insurance': return `Buy cover of $${capital} from ${name} on ${chain} and keep the policy active; the premium is separate from the cover amount, so check the premium before paying. Cover is not routine low-risk farming: read the policy terms and expiry before paying.`;
-    case 'governance': return `Deposit $${capital} into ${name} on ${chain} and vote in one governance round.`;
-    case 'chain': return `Use one app built on ${name} and keep a small balance active on its chain; a chain itself takes no deposits.`;
-    case 'payments': return `Spend $${capital} through ${name} on ${chain} and keep the card or payment balance topped up; verify the supported payment methods on the official app first.`;
-    case 'indexes': return `Buy $${capital} of the index ${name} tracks on ${chain} and hold it; check the index composition on the official app first.`;
-    case 'cedefi': return `Use one CeDeFi product on ${name} and move a small amount between its on-chain and off-chain legs; verify the supported product on the official app first.`;
-    default: return `Verify supported actions and assets for ${name} on the official app before doing anything; no deposit recommendation.`;
+    case 'lending': return `Verify on ${name}'s official app which assets it accepts as supply and which borrow markets exist, and what the current rates are — the snapshot does not list supported assets, so do not supply anything until the app shows it is supported.`;
+    case 'dex': return `Verify on ${name}'s official app which pools exist on ${chain} and what assets they take — the snapshot does not list pools, so do not provide liquidity until the app shows a pool that takes an asset you hold.`;
+    case 'bridge': return `Verify on ${name}'s official app which routes it supports from ${chain} and what the destination accepts — the snapshot does not list routes, so do not bridge anything until the app shows the route is supported.`;
+    case 'staking': return `Verify on ${name}'s official app which staking asset it takes on ${chain} and what receipt token it issues — the snapshot does not name a staking asset, so do not stake anything until the app shows it is supported.`;
+    case 'derivatives': return `Verify on ${name}'s official app whether it offers a hedged or margin product you can use with a small size, and read its liquidation terms — the snapshot does not establish a supported product, so do not deposit margin until the app shows one. Leveraged activity is not routine low-risk farming: if the app shows a product, size any position small and keep margin well above the liquidation level.`;
+    case 'prediction': return `Verify on ${name}'s official app which markets are open and what the settlement rules are — the snapshot does not list markets, so do not fund a position until the app shows an open market. Prediction markets are speculative, not routine low-risk farming: only ever stake what you can lose.`;
+    case 'curator': return `Verify on ${name}'s official app which vaults exist on ${chain}, what assets they take, and what the current share price is — the snapshot does not list vaults, so do not deposit until the app shows a vault that takes an asset you hold.`;
+    case 'stable': return `Verify on ${name}'s official app which stable asset it mints or accepts on ${chain} and what backs it — the snapshot does not name the asset, so do not mint or deposit until the app shows it is supported.`;
+    case 'rwa': return `Verify on ${name}'s official app which yield-bearing asset it offers on ${chain}, what backs it, and what the redemption terms are — the snapshot does not name the asset, so do not mint anything until the app shows it. RWA assets carry issuer and redemption risk, not routine low-risk farming: check the redemption terms first.`;
+    case 'insurance': return `Verify on ${name}'s official app which cover it sells on ${chain}, what it covers, and what the premium and expiry are — the snapshot does not list cover products, so do not buy anything until the app shows a product that fits. Cover is not routine low-risk farming: read the policy terms and expiry before paying.`;
+    case 'governance': return `Verify on ${name}'s official app whether it has an open governance round on ${chain} and what voting requires — the snapshot does not establish a round, so do not deposit or vote until the app shows one is open.`;
+    case 'chain': return `Verify what one app built on ${name} supports on its own page, then use it and keep a small balance active on its chain; a chain itself takes no deposits. Do not move funds until the app shows what it supports.`;
+    case 'payments': return `Verify on ${name}'s official app which payment methods it supports on ${chain} — the snapshot does not list them, so do not top up or spend until the app shows a supported method.`;
+    case 'indexes': return `Verify on ${name}'s official app which index it tracks on ${chain} and what its current composition is — the snapshot does not name the index, so do not buy anything until the app shows it.`;
+    case 'cedefi': return `Verify on ${name}'s official app which CeDeFi product it offers and what moves between its on-chain and off-chain legs — the snapshot does not name a product, so do not move anything until the app shows one.`;
+    default: return `Verify supported actions and assets for ${name} on the official app before doing anything; do not move any funds until the app shows an action is supported. No deposit recommendation.`;
   }
 }
 
 /** The farm-plan family a category belongs to, so the weekly action, the rewards
  * check and the log all follow what the protocol actually does. No protocol name
- * is ever special-cased: the family comes from the snapshot's own category. */
+ * is ever special-cased: the family comes from the snapshot's own category.
+ * Labels are normalized the same way as for comparable pooling (trimmed and
+ * case-folded), so whitespace or case cannot change the family. Specific rules
+ * run before broad substrings: 'Yield Aggregator' contains 'yield', so the
+ * curator/aggregator rule must be checked before the DEX rule's 'yield' match,
+ * or the protocol would be routed to a liquidity-pool plan instead of a vault plan. */
 export function familyFor(p: SnapshotProtocol): string {
-  const c = (p.category ?? '').toLowerCase();
+  const c = normCategory(p.category);
   if (c.includes('lend') || c.includes('cdp') || c.includes('collateral')) return 'lending';
-  if (c.includes('dex') || c.includes('yield') || c.includes('leveraged farm') || c.includes('farm') || c.includes('liquidity manager')) return 'dex';
+  if (c.includes('curator') || c.includes('allocator') || c.includes('aggregator')) return 'curator';
+  // 'dex' is matched word-aware: 'Indexes' contains 'dex' as a substring but is an
+  // index product, not a DEX. 'Dexs' starts with 'dex'; anything else needs ' dex'.
+  if (c === 'dex' || c.startsWith('dex') || c.includes(' dex') || c.includes('yield') || c.includes('leveraged farm') || c.includes('farm') || c.includes('liquidity manager')) return 'dex';
   if (c.includes('bridge')) return 'bridge';
   if (c.includes('staking') || c.includes('restak')) return 'staking';
   if (c.includes('derivative') || c.includes('basis trading')) return 'derivatives';
   if (c.includes('prediction')) return 'prediction';
-  if (c.includes('curator') || c.includes('allocator') || c.includes('aggregator')) return 'curator';
   if (c.includes('stablecoin')) return 'stable';
   if (c.includes('rwa') || c.includes('anchor btc') || c.includes('decentralized btc')) return 'rwa';
   if (c.includes('insurance')) return 'insurance';
@@ -570,49 +583,55 @@ export function familyFor(p: SnapshotProtocol): string {
   return 'other';
 }
 
-/** The weekly qualifying action, specific to the protocol's family. */
+/** The weekly qualifying action, specific to the protocol's family. Like the entry
+ * action it is verify-first: re-check what was verified on the official app and
+ * confirm it still holds before doing anything. It never instructs a borrow,
+ * bridge, restake, mint, trade or vote. */
 function weeklyFor(p: SnapshotProtocol, capital: number, chain: string): string {
   const name = p.name;
   switch (familyFor(p)) {
-    case 'lending': return `Each week, borrow a small amount against the $${capital} supply position on ${name} and repay it the same week, keeping the collateral ratio healthy. Borrowing can be liquidated: never borrow against a position you cannot afford to top up.`;
-    case 'dex': return `Each week, swap a small amount through ${name}'s main pool on ${chain} or collect the fees the $${capital} liquidity position earned.`;
-    case 'bridge': return `Each week, bridge a small amount through ${name} and use the bridged funds in the supported destination app; verify the route on the official app before sending.`;
-    case 'staking': return `Each week, restake the staking rewards ${name} paid on ${chain} and keep the receipt token in the same wallet.`;
-    case 'derivatives': return `Each week, open and close one small hedged position on ${name} and keep the margin well above the liquidation level.`;
-    case 'prediction': return `Each week, place one small position on a new market on ${name} and let it settle before placing the next one.`;
-    case 'curator': return `Each week, check the vault's allocation on ${name} and add a small top-up or rebalance when the curator shifts the strategy.`;
-    case 'stable': return `Each week, mint or redeem a small amount of the stable asset through ${name} on ${chain} and keep the peg in view.`;
-    case 'rwa': return `Each week, check the yield ${name} accrued on ${chain} and add a small top-up while the position is still earning.`;
-    case 'insurance': return `Each week, check that the cover bought from ${name} on ${chain} is still active and top it up before it lapses.`;
-    case 'governance': return `Each week, vote in a new governance round on ${name} and keep the deposit staked while the round runs.`;
-    case 'chain': return `Each week, use one app built on ${chain} through ${name} and keep a small balance active on the chain.`;
-    case 'payments': return `Each week, spend a small amount through ${name} on ${chain} and keep the card or payment balance topped up.`;
-    case 'indexes': return `Each week, check the index ${name} tracks on ${chain} and rebalance the small holding when its weights shift.`;
-    case 'cedefi': return `Each week, use one CeDeFi product on ${name} and move a small amount between its on-chain and off-chain legs.`;
+    case 'lending': return `Each week, re-check ${name}'s official app for the supply and borrow markets you verified, and confirm the rates and collateral terms still hold before doing anything. Borrowing can be liquidated: never borrow against a position you cannot afford to top up.`;
+    case 'dex': return `Each week, re-check ${name}'s official app for the pools you verified on ${chain} and confirm they still accept the asset before doing anything.`;
+    case 'bridge': return `Each week, re-check ${name}'s official app for the bridge routes you verified and confirm the route is still supported before sending anything.`;
+    case 'staking': return `Each week, re-check ${name}'s official app for the staking terms you verified on ${chain} and confirm the receipt token still matches before doing anything.`;
+    case 'derivatives': return `Each week, re-check ${name}'s official app for the product you verified and confirm its terms still hold; do not open a new position on an unverified change.`;
+    case 'prediction': return `Each week, re-check ${name}'s official app for newly opened markets and confirm the settlement rules before funding anything.`;
+    case 'curator': return `Each week, re-check ${name}'s official app for the vaults you verified and confirm the allocation and share price before doing anything.`;
+    case 'stable': return `Each week, re-check ${name}'s official app for the stable asset you verified on ${chain} and confirm the peg still holds before doing anything.`;
+    case 'rwa': return `Each week, re-check ${name}'s official app for the asset you verified on ${chain} and confirm the yield and redemption terms before doing anything.`;
+    case 'insurance': return `Each week, re-check ${name}'s official app that the cover you verified on ${chain} is still active and confirm the expiry before doing anything.`;
+    case 'governance': return `Each week, re-check ${name}'s official app for a new governance round on ${name} and confirm what voting requires before doing anything.`;
+    case 'chain': return `Each week, use one app built on ${chain} through ${name} and keep a small balance active on the chain; verify what it supports on its own page first.`;
+    case 'payments': return `Each week, re-check ${name}'s official app for the payment methods you verified on ${chain} and confirm they are still supported before spending.`;
+    case 'indexes': return `Each week, re-check ${name}'s official app for the index you verified on ${chain} and confirm its composition before doing anything.`;
+    case 'cedefi': return `Each week, re-check ${name}'s official app for the CeDeFi product you verified and confirm it is still offered before moving anything.`;
     default: return `Each week, check the official app for a supported qualifying action for ${name} and do only what it supports; do not deposit on a guess.`;
   }
 }
 
-/** Where the rewards for this family are checked, before any withdrawal. */
+/** Where the rewards for this family are checked, before any withdrawal. No step
+ * asserts that a rewards or points programme exists: the snapshot does not
+ * establish one for any protocol, so each family only asks whether the official
+ * app and docs show one at all, and what it actually rewards. */
 function claimFor(p: SnapshotProtocol): string {
   const name = p.name;
   switch (familyFor(p)) {
-    case 'lending': return `Open ${name}'s own points or borrow-rewards page and check the accrued points for the supply and borrow activity before withdrawing.`;
-    case 'dex': return `Open ${name}'s own rewards page and check the trading fees and points the liquidity position earned before withdrawing.`;
-    case 'bridge': return `Open ${name}'s own points page and check the volume credited for each bridge before withdrawing.`;
-    case 'staking': return `Open ${name}'s own rewards page and check the staking yield and points accrued before unstaking anything.`;
-    case 'derivatives': return `Open ${name}'s own trading-rewards page and check the volume and points credited before closing the position.`;
-    case 'prediction': return `Open ${name}'s own rewards page and check the points for settled markets before withdrawing.`;
-    case 'curator': return `Open ${name}'s own points page and check the vault shares and points accrued before withdrawing.`;
-    case 'stable': return `Open ${name}'s own rewards page and check the points for minting and holding before redeeming.`;
-    case 'rwa': return `Open ${name}'s own rewards page and check the accrued yield and points before redeeming anything.`;
-    case 'insurance': return `Open ${name}'s own rewards page and check the cover status and any points earned before the policy ends.`;
-    case 'governance': return `Open ${name}'s own rewards page and check the voting points and incentives earned before withdrawing.`;
-    case 'chain': return `Open ${name}'s own rewards page and check the activity credited on its chain before moving funds away.`;
-    case 'payments': return `Open ${name}'s own rewards page and check the cashback or points from the spending before withdrawing.`;
-    case 'indexes': return `Open ${name}'s own rewards page and check the points for holding the index before selling.`;
-    case 'cedefi': return `Open ${name}'s own rewards page and check the points credited for the activity before withdrawing.`;
-    default: return `Open ${name}'s own points or rewards page and check what, if anything, the activity earned before withdrawing.`;
+    case 'lending': return `Check ${name}'s official app and docs for whether it runs any points or borrow-rewards programme, and what activity it actually rewards — the snapshot does not establish one, so do not assume a programme or a rewards page exists.`;
+    case 'dex': return `Check ${name}'s official app and docs for whether it runs any points or trading-rewards programme, and what activity it actually rewards — the snapshot does not establish one, so do not assume a programme or a rewards page exists.`;
+    case 'bridge': return `Check ${name}'s official app and docs for whether it runs any points programme for bridge volume, and what it actually rewards — the snapshot does not establish one, so do not assume a programme or a rewards page exists.`;
+    case 'staking': return `Check ${name}'s official app and docs for whether it runs any points programme for staking, and what it actually rewards — the snapshot does not establish one, so do not assume a programme or a rewards page exists.`;
+    case 'derivatives': return `Check ${name}'s official app and docs for whether it runs any trading-rewards programme, and what volume it actually rewards — the snapshot does not establish one, so do not assume a programme or a rewards page exists.`;
+    case 'prediction': return `Check ${name}'s official app and docs for whether it runs any points programme for settled markets, and what it actually rewards — the snapshot does not establish one, so do not assume a programme or a rewards page exists.`;
+    case 'curator': return `Check ${name}'s official app and docs for whether it runs any points programme for vault shares, and what it actually rewards — the snapshot does not establish one, so do not assume a programme or a rewards page exists.`;
+    case 'stable': return `Check ${name}'s official app and docs for whether it runs any points programme for minting and holding, and what it actually rewards — the snapshot does not establish one, so do not assume a programme or a rewards page exists.`;
+    case 'rwa': return `Check ${name}'s official app and docs for whether it runs any points or yield-rewards programme, and what it actually rewards — the snapshot does not establish one, so do not assume a programme or a rewards page exists.`;
+    case 'insurance': return `Check ${name}'s official app and docs for whether it runs any points programme for cover, and what it actually rewards — the snapshot does not establish one, so do not assume a programme or a rewards page exists.`;
+    case 'governance': return `Check ${name}'s official app and docs for whether it runs any voting-points or incentives programme, and what it actually rewards — the snapshot does not establish one, so do not assume a programme or a rewards page exists.`;
+    case 'chain': return `Check ${name}'s official app and docs for whether it runs any activity-rewards programme on its chain, and what it actually rewards — the snapshot does not establish one, so do not assume a programme or a rewards page exists.`;
+    case 'payments': return `Check ${name}'s official app and docs for whether it runs any cashback or points programme for spending, and what it actually rewards — the snapshot does not establish one, so do not assume a programme or a rewards page exists.`;
+    case 'indexes': return `Check ${name}'s official app and docs for whether it runs any points programme for holding the index, and what it actually rewards — the snapshot does not establish one, so do not assume a programme or a rewards page exists.`;
+    case 'cedefi': return `Check ${name}'s official app and docs for whether it runs any points programme for CeDeFi activity, and what it actually rewards — the snapshot does not establish one, so do not assume a programme or a rewards page exists.`;
+    default: return `Check ${name}'s official app and docs for whether it has any rewards or points programme at all, and what it actually rewards — the snapshot does not establish one, so do not assume a programme or a rewards page exists.`;
   }
 }
 
@@ -642,10 +661,13 @@ function logFor(p: SnapshotProtocol, capital: number): string {
 /**
  * A protocol's farm plan: six steps, each an action with a cost and a time. The plan is
  * derived from the protocol's own record (category, chains, TVL, age), never from a
- * hand-written list of names. Step 2 is the category's entry action; steps 3, 5 and 6
- * are the same family's weekly action, rewards check and log, so every step fits
- * what the protocol actually does. Network fees are variable: no step states a fixed
- * gas dollar amount, and an unknown fee asset is named as unverified, never guessed.
+ * hand-written list of names. Step 2 is the category's verify-first entry action;
+ * steps 3 and 5 are the same family's weekly re-check and rewards check, so every
+ * step fits what the protocol actually does — and no step instructs a transaction
+ * the snapshot cannot support. The hold step applies only if an action was verified
+ * and taken; if nothing was supported, no position is opened on a guess. Network
+ * fees are variable: no step states a fixed gas dollar amount, and an unknown fee
+ * asset is named as unverified, never guessed.
  */
 export function farmSteps(p: SnapshotProtocol, age: number | null): FarmStep[] {
   const chain = chainOf(p);
@@ -673,8 +695,8 @@ export function farmSteps(p: SnapshotProtocol, age: number | null): FarmStep[] {
       time: '10 minutes a week',
     },
     {
-      text: `Hold the position for at least ${hold} days so the activity is counted in more than one snapshot.`,
-      cost: `the $${capital} stays in the position`,
+      text: `If you verified a supported action and took a position, hold it for at least ${hold} days so the activity is counted in more than one snapshot. If nothing was supported, do not open a position on a guess.`,
+      cost: `the $${capital} stays in the position only if one was opened`,
       time: `${hold} days`,
     },
     {

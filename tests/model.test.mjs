@@ -10,6 +10,7 @@ import {
   buildBoard,
   buildRadar,
   categoryMultiples,
+  familyFor,
   farmSteps,
   gasToken,
   impliedValue,
@@ -189,29 +190,65 @@ test('farmSteps: no fixed gas dollar amounts anywhere', () => {
 });
 
 const FAMILY_FIXTURES = [
-  ['lending', 'Lending'], ['dex', 'Dexs'], ['dex-farm', 'Farm'], ['dex-liquidity-manager', 'Liquidity Manager'],
-  ['bridge', 'Bridge'], ['staking', 'Liquid Staking'], ['derivatives', 'Derivatives'],
-  ['derivatives-basis', 'Basis Trading'], ['prediction', 'Prediction Market'],
-  ['curator', 'Yield Aggregator'], ['curator-risk', 'Risk Curators'],
-  ['stable', 'Stablecoin Issuer'], ['rwa', 'RWA'], ['rwa-anchor', 'Anchor BTC'],
-  ['rwa-decentralized', 'Decentralized BTC'], ['insurance', 'Insurance'],
-  ['governance', 'Governance Incentives'], ['chain', 'Chain'], ['payments', 'Payments'],
-  ['payments-card', 'Crypto Card Issuer'], ['indexes', 'Indexes'], ['cedefi', 'CeDeFi'],
-  ['other', 'Launchpad'],
+  ['lending', 'Lending', 'lending'], ['dex', 'Dexs', 'dex'], ['dex-farm', 'Farm', 'dex'],
+  ['dex-liquidity-manager', 'Liquidity Manager', 'dex'],
+  ['bridge', 'Bridge', 'bridge'], ['staking', 'Liquid Staking', 'staking'], ['derivatives', 'Derivatives', 'derivatives'],
+  ['derivatives-basis', 'Basis Trading', 'derivatives'], ['prediction', 'Prediction Market', 'prediction'],
+  ['curator', 'Yield Aggregator', 'curator'], ['curator-risk', 'Risk Curators', 'curator'],
+  ['stable', 'Stablecoin Issuer', 'stable'], ['rwa', 'RWA', 'rwa'], ['rwa-anchor', 'Anchor BTC', 'rwa'],
+  ['rwa-decentralized', 'Decentralized BTC', 'rwa'], ['insurance', 'Insurance', 'insurance'],
+  ['governance', 'Governance Incentives', 'governance'], ['chain', 'Chain', 'chain'], ['payments', 'Payments', 'payments'],
+  ['payments-card', 'Crypto Card Issuer', 'payments'], ['indexes', 'Indexes', 'indexes'], ['cedefi', 'CeDeFi', 'cedefi'],
+  ['other', 'Launchpad', 'other'],
+  // Whitespace and case variants must classify exactly like the clean label.
+  ['curator-ws', ' Yield Aggregator ', 'curator'], ['curator-case', 'YIELD AGGREGATOR', 'curator'],
+  ['chain-ws', ' Chain ', 'chain'], ['lending-case', 'LENDING', 'lending'], ['dex-ws', ' Dexs ', 'dex'],
 ];
 
-for (const [label, category] of FAMILY_FIXTURES) {
-  test(`farm family ${label} (${category}): entry action is explicit, never the generic deposit`, () => {
+for (const [label, category, family] of FAMILY_FIXTURES) {
+  test(`farm family ${label} (${category}): familyFor is ${family}, entry is verify-first`, () => {
     const p = proto({ slug: `fix-${label}`, name: 'Fixture Protocol', category, chains: ['Ethereum'] });
+    assert.equal(familyFor(p), family, label);
     const steps = farmSteps(p, 100).map((s) => `${s.text} Cost: ${s.cost}. Time: ${s.time}.`);
     assert.equal(steps.length, 6);
     for (const s of steps) assert.ok(s.length >= 20 && s.length <= 600, `${label} step of ${s.length} chars`);
     assert.doesNotMatch(steps[1], /^Deposit \$\d+ of USDC into Fixture Protocol on Ethereum and leave the position open\./);
+    // Entry is verify-first: it names what to check and forbids acting until supported.
+    assert.match(steps[1], /^Verify/, label);
+    assert.match(steps[1], /do not .* until the app shows/i, label);
+    // Claim never asserts a rewards/points programme exists.
+    assert.match(steps[4], /whether/, label);
+    assert.match(steps[4], /do not assume a programme or a rewards page exists/, label);
     if (label === 'other') {
-      assert.match(steps[1], /Verify supported actions and assets.*no deposit recommendation/);
+      assert.match(steps[1], /Verify supported actions and assets.*no deposit recommendation/i);
     }
   });
 }
+
+/** P1-01 negative test: with no evidence in the snapshot, no farm step may instruct
+ * a deposit, trade, mint, borrow, bridge, stake, spend or rewards claim. */
+test('farmSteps: missing evidence never produces a financial action or rewards claim', () => {
+  const forbidden = [
+    /Supply \$\d+ of .* to .* and leave the position open/,
+    /Provide \$\d+ of liquidity/,
+    /Deposit \$\d+ into/,
+    /Bridge \$\d+ of .* through/,
+    /Mint \$\d+ of/,
+    /Buy \$\d+ of/,
+    /Spend \$\d+ through/,
+    /Stake \$\d+ of/,
+    /borrow a small amount against/,
+    /restake the staking rewards/,
+    /place one .* position on a new market/,
+    /Open .*'s own (points|rewards) page and check/,
+    /collect the fees the \$\d+ liquidity position earned/,
+  ];
+  for (const [label, category] of FAMILY_FIXTURES) {
+    const steps = farmSteps(proto({ slug: `fix-${label}`, category, chains: ['Ethereum'] }), 100)
+      .map((s) => `${s.text} Cost: ${s.cost}. Time: ${s.time}.`);
+    for (const pattern of forbidden) assert.doesNotMatch(steps.join(' '), pattern, `${label}: ${pattern}`);
+  }
+});
 
 test('farm families: leveraged and speculative actions carry a risk note', () => {
   const risky = { derivatives: 'Derivatives', prediction: 'Prediction Market', insurance: 'Insurance', rwa: 'RWA' };
@@ -306,6 +343,18 @@ test('sealed snapshot: no board row reaches the generic deposit fallback', { ski
       /^Deposit \$\d+ of USDC into .* and leave the position open\./,
       r.slug,
     );
+  }
+});
+
+test('sealed snapshot: every farm plan is verify-first', { skip: !hasSnapshot }, () => {
+  const s = snapshot();
+  const { board } = buildRadar(s);
+  for (const r of board) {
+    assert.match(r.farm_steps[1], /^Verify/, r.slug);
+    assert.match(r.farm_steps[1], /do not .* until the app shows/i, r.slug);
+    assert.match(r.farm_steps[4], /whether/, r.slug);
+    assert.match(r.farm_steps[4], /do not assume a programme or a rewards page exists/, r.slug);
+    assert.doesNotMatch(r.farm_steps.join(' '), /Open .*'s own (points|rewards) page and check/, r.slug);
   }
 });
 
