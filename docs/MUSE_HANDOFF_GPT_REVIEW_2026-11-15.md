@@ -105,10 +105,10 @@ rewritten or force-pushed.
 
 ## Follow-up independent review — 2026-11-17 (GPT audit v2.6)
 
-**Reviewed main HEAD:** \`3b61c7d0d3515586ea7c6df9e07ce74007df50a0\`  
-**Audit:** \`docs/GPT_AUDIT_V26_2026-11-17.md\`
+**Reviewed main HEAD:** `3b61c7d0d3515586ea7c6df9e07ce74007df50a0`  
+**Audit:** `docs/GPT_AUDIT_V26_2026-11-17.md`
 
-A three-commit output-cleanup batch landed on main (\`ce07d7d\`, \`d868ba3\`, \`3b61c7d\`). It adds a path guard, integrates checks before and after output-directory creation, and adds four focused tests. PR #2 is closed and its branch is identical to main. Static unsafe paths are now rejected; a local check-then-use race remains between the final validation and recursive deletion. The PR description reports four focused tests passing on Node 22.16.0, but this review did not independently rerun them.
+A three-commit output-cleanup batch landed on main (`ce07d7d`, `d868ba3`, `3b61c7d`). It adds a path guard, integrates checks before and after output-directory creation, and adds four focused tests. PR #2 is closed and its branch is identical to main. Static unsafe paths are now rejected; a local check-then-use race remains between the final validation and recursive deletion. The PR description reports four focused tests passing on Node 22.16.0, but this review did not independently rerun them.
 
 **Unresolved findings remain OPEN:**
 
@@ -120,7 +120,7 @@ A three-commit output-cleanup batch landed on main (\`ce07d7d\`, \`d868ba3\`, \`
 6. The sealed snapshot is absent from the public repository. The 226-row rebuild and byte-identity claims were not independently reproduced. Main HEAD has no combined status checks, and the available PR-triggered workflow-run query returned zero.
 7. Manual keyboard, screen-reader and physical-device accessibility testing remains NOT TESTED.
 
-**Attribution/access blocker:** GitHub records all three output-path commits with nusasaputrarama-max as author and committer. The current collaborator permission lookup reports \`muse\` as \`read\`. Do not attribute this batch to Muse. Muse needs repository Write permission (or a verified authorized implementer must take over) before code remediation can be attributed or pushed under that identity.
+**Attribution/access blocker:** GitHub records all three output-path commits with nusasaputrarama-max as author and committer. The current collaborator permission lookup reports `muse` as `read`. Do not attribute this batch to Muse. Muse needs repository Write permission (or a verified authorized implementer must take over) before code remediation can be attributed or pushed under that identity.
 
 **Verification limitation:** a read-only shallow clone was attempted to execute tests, but failed before checkout because github.com DNS could not be resolved. No tests or rebuild were run by this review. The dashboard passed static network-reference inspection only; no browser runtime test was performed.
 
