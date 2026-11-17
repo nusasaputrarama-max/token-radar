@@ -18,7 +18,9 @@ import {
   isPreToken,
   liveRows,
   median,
+  neutralModel,
   parseSnapshot,
+  sensitivityAnalysis,
   tokenState,
   SnapshotError,
   MODEL,
@@ -375,4 +377,100 @@ test('sealed snapshot: model constants are unchanged from radar-3', { skip: !has
     maturity_floor: 0.7, maturity_range: 0.3, maturity_days: 1460,
     unknown_age_days: 365, breadth_per_chain: 0.02, breadth_max_chains: 10,
   });
+});
+
+/** One live comparable pins the Lending multiple to 0.10x, so fixture implied
+ * values are hand-computable: TVL x 0.1 x growth x maturity. */
+function sensitivitySnap(rows) {
+  return snap({
+    protocols: [
+      proto({ slug: 'live-one', name: 'Live One', mcap_usd: 10_000_000, gecko_id: 'live', symbol: 'LIVE', tvl_usd: 100_000_000 }),
+      ...rows,
+    ],
+    watchlist: rows.map((r) => r.slug),
+  });
+}
+
+test('sensitivity: neutralizing growth moves ranks and top-10 membership', () => {
+  const fillers = Array.from({ length: 10 }, (_, i) =>
+    proto({ slug: `f${String(i + 1).padStart(2, '0')}`, name: `Filler ${i + 1}`, tvl_usd: 100_000_000, change_7d: 0, listed_at: '2026-11-14' }));
+  const s = sensitivitySnap([
+    proto({ slug: 'a-proto', name: 'A', tvl_usd: 100_000_000, change_7d: 120, listed_at: '2026-11-14' }),
+    proto({ slug: 'b-proto', name: 'B', tvl_usd: 100_000_000, change_7d: -60, listed_at: '2022-11-14' }),
+    ...fillers,
+  ]);
+  const report = sensitivityAnalysis(s);
+  assert.equal(report.baselineModel, 'radar-5');
+  assert.equal(report.rows, 12);
+  // Baseline: A 11.2M first, ten 7.0M fillers, B 5.8M last.
+  const growth = report.variants.find((v) => v.variant === 'growth-neutral');
+  assert.equal(growth.moved, 12);
+  assert.equal(growth.medianAbsRankChange, 1);
+  assert.equal(growth.p90AbsRankChange, 1);
+  assert.equal(growth.maxAbsRankChange, 11);
+  assert.deepEqual(growth.topN[0], { n: 10, changed: 1, entered: ['b-proto'], left: ['f09'] });
+  assert.equal(growth.topN[1].changed, 0);
+  assert.equal(growth.topN[2].changed, 0);
+  // Same fixture under maturity neutralization: A 16M first, fillers 10M, B last — ranks unchanged.
+  const maturity = report.variants.find((v) => v.variant === 'maturity-neutral');
+  assert.equal(maturity.moved, 0);
+  // Both neutralized: everything ties at 10M except B, which rises to rank 2.
+  const both = report.variants.find((v) => v.variant === 'both-neutral');
+  assert.equal(both.moved, 11);
+  assert.equal(both.maxAbsRankChange, 10);
+  assert.deepEqual(both.topN[0], { n: 10, changed: 1, entered: ['b-proto'], left: ['f09'] });
+});
+
+test('sensitivity: neutralizing maturity moves ranks', () => {
+  const s = sensitivitySnap([
+    proto({ slug: 'c-old', name: 'Old', tvl_usd: 140_000_000, change_7d: 0, listed_at: '2022-11-14' }),
+    proto({ slug: 'a-new', name: 'New', tvl_usd: 100_000_000, change_7d: 120, listed_at: '2026-11-14' }),
+  ]);
+  const report = sensitivityAnalysis(s);
+  assert.equal(report.rows, 2);
+  // Baseline: C 14M first, A 11.2M second. Maturity-neutral: A 16M first, C 14M second.
+  const maturity = report.variants.find((v) => v.variant === 'maturity-neutral');
+  assert.equal(maturity.moved, 2);
+  assert.equal(maturity.medianAbsRankChange, 1);
+  assert.equal(maturity.p90AbsRankChange, 1);
+  assert.equal(maturity.maxAbsRankChange, 1);
+  // Growth-neutral and both-neutral leave this pair's order alone.
+  assert.equal(report.variants.find((v) => v.variant === 'growth-neutral').moved, 0);
+  assert.equal(report.variants.find((v) => v.variant === 'both-neutral').moved, 0);
+});
+
+test('sensitivity: the analysis never mutates MODEL', () => {
+  const before = JSON.stringify(MODEL);
+  const neutral = neutralModel({ growth: true, maturity: true });
+  assert.equal(neutral.growth_up, 0);
+  assert.equal(neutral.growth_down, 0);
+  assert.equal(neutral.maturity_floor, 1);
+  assert.equal(neutral.maturity_range, 0);
+  neutral.growth_up = 9;
+  neutral.maturity_floor = 9;
+  assert.equal(JSON.stringify(MODEL), before);
+  const s = sensitivitySnap([
+    proto({ slug: 'a-proto', name: 'A', tvl_usd: 100_000_000, change_7d: 120, listed_at: '2026-11-14' }),
+  ]);
+  sensitivityAnalysis(s);
+  assert.equal(JSON.stringify(MODEL), before);
+});
+
+test('sealed snapshot: sensitivity report is structural and diagnostic', { skip: !hasSnapshot }, () => {
+  const s = snapshot();
+  const before = JSON.stringify(MODEL);
+  const report = sensitivityAnalysis(s);
+  assert.equal(report.rows, 226);
+  assert.equal(report.variants.length, 3);
+  for (const v of report.variants) {
+    assert.equal(v.rows, 226);
+    assert.ok(v.moved >= 0 && v.moved <= 226, `${v.variant} moved ${v.moved}`);
+    assert.ok(Number.isFinite(v.medianAbsRankChange) && Number.isFinite(v.p90AbsRankChange));
+    assert.ok(v.maxAbsRankChange >= 0 && v.maxAbsRankChange <= 225, `${v.variant} max ${v.maxAbsRankChange}`);
+    for (const t of v.topN) {
+      assert.equal(t.changed, t.entered.length);
+      assert.equal(t.changed, t.left.length);
+    }
+  }
+  assert.equal(JSON.stringify(MODEL), before);
 });

@@ -455,6 +455,95 @@ export function buildBoard(snapshot: Snapshot, model: ModelConstants = MODEL): B
   }));
 }
 
+/**
+ * A neutralized copy of the model constants: the growth and/or maturity
+ * multipliers pinned to 1.0. Growth is neutralized by zeroing both weights, so
+ * `growthMult` is 1 for every row regardless of `change_7d`; maturity is
+ * neutralized by a floor of 1.0 and a range of 0, so `maturityMult` is 1 for
+ * every age. The returned object is a copy: MODEL itself is never mutated.
+ */
+export function neutralModel(options: { growth?: boolean; maturity?: boolean }): ModelConstants {
+  return {
+    ...MODEL,
+    ...(options.growth ? { growth_up: 0, growth_down: 0 } : {}),
+    ...(options.maturity ? { maturity_floor: 1, maturity_range: 0 } : {}),
+  };
+}
+
+/** One sensitivity variant: how the ranking moves when a multiplier is neutralized. */
+export interface SensitivityVariant {
+  variant: 'growth-neutral' | 'maturity-neutral' | 'both-neutral';
+  rows: number;
+  /** Rows whose rank differs from the baseline ranking. */
+  moved: number;
+  /** Median absolute rank change (the codebase's median: the two middle values averaged for even counts). */
+  medianAbsRankChange: number;
+  /** 90th percentile absolute rank change (nearest-rank). */
+  p90AbsRankChange: number;
+  maxAbsRankChange: number;
+  /** Top-N membership changes: slugs entering and leaving the baseline top N. */
+  topN: { n: number; changed: number; entered: string[]; left: string[] }[];
+}
+
+/** The full sensitivity report: the baseline ranking against three neutralized variants. */
+export interface SensitivityReport {
+  baselineModel: string;
+  rows: number;
+  variants: SensitivityVariant[];
+}
+
+/** The p-th percentile of a sorted array, nearest-rank. */
+function percentile(sorted: number[], p: number): number {
+  if (sorted.length === 0) return 0;
+  return sorted[Math.min(sorted.length - 1, Math.max(0, Math.ceil(p * sorted.length) - 1))]!;
+}
+
+/**
+ * Deterministic rank-sensitivity analysis (audit v2.5 P1-02): the baseline
+ * ranking against the same board with (a) the growth multiplier neutralized to
+ * 1.0, (b) the maturity multiplier neutralized to 1.0, and (c) both
+ * neutralized. Diagnostic only: it builds variant boards from copies of the
+ * model constants and never changes MODEL, the submitted board, or any row's
+ * stored value. Rank movement is reported as the median, p90 and max absolute
+ * rank change plus top-10/25/50 membership changes, so the next reviewer can
+ * see how much of the ranking the 7-day window and the listing-age curve
+ * decide — without silently recalibrating anything.
+ */
+export function sensitivityAnalysis(snapshot: Snapshot): SensitivityReport {
+  const baseline = buildBoard(snapshot, MODEL);
+  const baseRank = new Map(baseline.map((r) => [r.slug, r.rank]));
+  const baseSlugs = new Set(baseline.map((r) => r.slug));
+  const variants = (
+    [
+      ['growth-neutral', neutralModel({ growth: true })],
+      ['maturity-neutral', neutralModel({ maturity: true })],
+      ['both-neutral', neutralModel({ growth: true, maturity: true })],
+    ] as const
+  ).map(([variant, model]) => {
+    const board = buildBoard(snapshot, model);
+    if (board.length !== baseline.length) throw new SnapshotError(`sensitivity ${variant}: ${board.length} rows, expected ${baseline.length}`);
+    for (const r of board) if (!baseSlugs.has(r.slug)) throw new SnapshotError(`sensitivity ${variant}: unexpected slug ${r.slug}`);
+    const deltas = board.map((r) => Math.abs(r.rank - baseRank.get(r.slug)!)).sort((a, b) => a - b);
+    const topN = [10, 25, 50].map((n) => {
+      const baseTop = new Set(baseline.slice(0, n).map((r) => r.slug));
+      const varTop = new Set(board.slice(0, n).map((r) => r.slug));
+      const entered = [...varTop].filter((s) => !baseTop.has(s)).sort();
+      const left = [...baseTop].filter((s) => !varTop.has(s)).sort();
+      return { n, changed: entered.length, entered, left };
+    });
+    return {
+      variant,
+      rows: board.length,
+      moved: deltas.filter((d) => d > 0).length,
+      medianAbsRankChange: deltas.length === 0 ? 0 : median(deltas),
+      p90AbsRankChange: percentile(deltas, 0.9),
+      maxAbsRankChange: deltas[deltas.length - 1] ?? 0,
+      topN,
+    };
+  });
+  return { baselineModel: MODEL_VERSION, rows: baseline.length, variants };
+}
+
 const round4 = (n: number): number => Math.round(n * 1e4) / 1e4;
 
 /** One step as a single string: action, then cost and time, within 20..600 characters. */
