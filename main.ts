@@ -18,6 +18,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync,
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { boardIssue, buildRadar, dataScript, parseSnapshot } from './lib/model.ts';
+import { safeOutputPath } from './lib/output-path.ts';
 import { buildDossier } from './vendor/makefun-board.ts';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
@@ -42,7 +43,7 @@ if (!existsSync(inputFile)) {
   process.stderr.write(`token radar: no snapshot at ${inputFile}: pass --input <snapshot.json|directory> or mount the sealed /input\n`);
   process.exit(2);
 }
-const out = arg('output', process.env.MAKEFUN_OUTPUT_DIR ?? '/output');
+const out = safeOutputPath(arg('output', process.env.MAKEFUN_OUTPUT_DIR ?? '/output'), here);
 
 const snapshot = parseSnapshot(readFileSync(inputFile, 'utf8'));
 const { board, radar } = buildRadar(snapshot);
@@ -53,6 +54,8 @@ if (issue !== null) {
 }
 
 mkdirSync(out, { recursive: true });
+// Re-check after directory creation so a newly introduced symlink cannot redirect cleanup.
+safeOutputPath(out, here);
 // Clean the generated paths first, so a stale board, dataset, dashboard file,
 // screenshot or dossier can never survive into this run's output.
 for (const name of ['board.json', 'data.js', 'dossier.json', 'dashboard', 'screenshots']) {
