@@ -99,3 +99,28 @@ live entry and resubmission needs Rama's approval of this exact commit; no trans
 bundle (main agent bundles later). The already-pushed `bee5190` commit was not
 rewritten or force-pushed.
 
+
+
+---
+
+## Independent follow-up — 2026-11-17 (GPT audit v2.7)
+
+**Audited main:** `9e6d5bb07648d59ccd1258665037de52a4a303dd`  
+**Compare from prior reviewed main:** `3b61c7d` → main, 8 commits ahead / 0 behind.  
+**Audit:** `docs/GPT_AUDIT_V27_2026-11-17.md`.
+
+The new batch materially improves verify-first farm wording, Yield Aggregator classification, normalized chain deduplication, growth/maturity sensitivity diagnostics and output-path protection. The diagnostic is not a model recalibration; constants and the submitted board remain unchanged.
+
+**Acceptance remains OPEN. Concrete unresolved items:**
+
+1. `parseSnapshot()` still accepts future `listed_at` values, silently maps non-string dates to null, and retains finite negative market caps. Reject future dates relative to `as_of`, invalid non-null date types and negative market caps with parser-level tests.
+2. `boardIssue()` checks that sorted rank values are contiguous, but does not bind `board[i].rank` to `i + 1` or enforce ascending slug for equal implied values. Add both invariants and negative fixtures.
+3. CEX exclusion still compares raw category strings in `isRankable()` and live-comparable selection. Normalize category before excluding CEX; add case/whitespace tests.
+4. Farm plans are only partially non-transactional: the chain entry/weekly wording still recommends keeping a small balance active, and step costs still show TVL-derived $50/$100/$200 capital amounts without an explicit illustrative/non-prescriptive label. Extend tests to inspect all six steps and cost fields.
+5. Output cleanup is materially safer but not atomic: the interval between `assertSafeCleanupTarget()` and `rmSync()` remains. Group-writable directories are accepted only under a trusted-group assumption. Keep this limitation explicit and run under a private/exclusively controlled parent.
+6. Growth/maturity sensitivity is implemented and reported, but calibration remains a separate owner decision. Do not alter constants or the submitted ranking without explicit approval.
+7. The remediation report claims 69/69 tests and sealed-snapshot rebuild evidence; this audit could not independently rerun tests because GitHub clone failed DNS, and the sealed input is not in the public repository. CI is still absent, main is unprotected, and manual accessibility testing is not done.
+
+**Attribution/access blocker:** GitHub lists `nusasaputrarama-max` as author and committer for all eight commits in the new range. Muse's repository permission remains `read`. Do not attribute this batch to Muse or assume Muse can push until identity and write access are independently resolved.
+
+See the v2.7 audit for exact source-level evidence and verification limits. No application code was changed by this audit. No deployment, resubmission, token launch, transaction, signing, purchase, funds movement or spending is authorized.
