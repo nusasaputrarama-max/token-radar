@@ -38,7 +38,8 @@
 //                calls this "time since DefiLlama listing", never protocol maturity.
 //   breadth    = 1 + 0.02 x min(distinct chains - 1, 10); each extra chain is
 //                distribution surface for a launch, capped at ten. Chains are
-//                deduplicated first, so a repeated chain label cannot inflate it.
+//                deduplicated on a normalized key (trim + case-fold), so a
+//                repeated or cosmetically different chain label cannot inflate it.
 //   implied    = max(1, round(tvl_usd x multiple x growthMult x maturity x breadth))
 //
 // No protocol name is ever special-cased: the same function scores every row, and every
@@ -281,6 +282,24 @@ export function normCategory(category: string | null): string {
   return (category ?? 'Other').trim().toLowerCase();
 }
 
+/** Chain labels deduplicated on a normalized key (trim + case-fold), in input
+ * order, preserving the first label as written (trimmed) as the display label:
+ * 'Ethereum', 'ethereum' and ' Ethereum ' are one chain, not three. Blank and
+ * non-string entries are dropped, and a non-array input deduplicates to []. */
+export function dedupChains(chains: unknown): string[] {
+  if (!Array.isArray(chains)) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const c of chains) {
+    if (typeof c !== 'string' || c.trim() === '') continue;
+    const key = c.trim().toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(c.trim());
+  }
+  return out;
+}
+
 /** A quartile of a sorted array, by linear interpolation. */
 function quartile(sorted: number[], q: number): number {
   const i = (sorted.length - 1) * q;
@@ -383,8 +402,9 @@ export function impliedValue(
   const growthMult = 1 + (growthPct / 100) * weight;
   const ageForModel = age ?? model.unknown_age_days;
   const maturityMult = model.maturity_floor + (Math.min(Math.max(ageForModel, 0), model.maturity_days) / model.maturity_days) * model.maturity_range;
-  // Chains are deduplicated at parse time, so a repeated chain label cannot inflate breadth.
-  const extraChains = Math.min(Math.max(new Set(protocol.chains).size - 1, 0), model.breadth_max_chains);
+  // Chains are deduplicated on a normalized key (trim + case-fold), so a
+  // repeated or cosmetically different chain label cannot inflate breadth.
+  const extraChains = Math.min(Math.max(dedupChains(protocol.chains).length - 1, 0), model.breadth_max_chains);
   const breadthMult = 1 + model.breadth_per_chain * extraChains;
   const implied = Math.max(1, Math.round(protocol.tvl_usd * categoryMultiple * growthMult * maturityMult * breadthMult));
   return { implied, categoryMultiple, categoryLiveN, categoryIqr, categoryMedian, confidence, growthMissing, growthPct, growthMult, maturityMult, breadthMult, age };
@@ -962,8 +982,9 @@ export function parseSnapshot(text: string): Snapshot {
       slug: p.slug,
       name: p.name,
       category: typeof p.category === 'string' ? p.category : null,
-      // Chains are deduplicated in input order, so a repeated label cannot inflate breadth.
-      chains: Array.isArray(p.chains) ? [...new Set(p.chains.filter((c): c is string => typeof c === 'string' && c.trim() !== ''))] : [],
+      // Chains are deduplicated on a normalized key in input order, so a
+      // repeated or cosmetically different label cannot inflate breadth.
+      chains: dedupChains(p.chains),
       tvl_usd: p.tvl_usd,
       change_7d: typeof p.change_7d === 'number' && Number.isFinite(p.change_7d) ? p.change_7d : null,
       mcap_usd: mcap === 0 ? null : mcap,

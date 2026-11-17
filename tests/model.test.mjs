@@ -10,6 +10,7 @@ import {
   buildBoard,
   buildRadar,
   categoryMultiples,
+  dedupChains,
   familyFor,
   farmSteps,
   gasToken,
@@ -166,6 +167,35 @@ test('parseSnapshot: zero market cap becomes null, chains are deduplicated', () 
   })));
   assert.equal(s.protocols[0].mcap_usd, null);
   assert.deepEqual(s.protocols[0].chains, ['Ethereum', 'Base']);
+});
+
+test('dedupChains: case and whitespace variants are one chain, first label wins', () => {
+  assert.deepEqual(dedupChains(['Ethereum', 'ethereum', ' Ethereum ', 'Solana', 'solana']), ['Ethereum', 'Solana']);
+  assert.deepEqual(dedupChains(['  Solana  ', 'solana']), ['Solana']);
+  assert.deepEqual(dedupChains(['Ethereum', 'Base', 'base', 'BASE']), ['Ethereum', 'Base']);
+  assert.deepEqual(dedupChains(['', '   ', 42, null, undefined]), []);
+  assert.deepEqual(dedupChains('not-an-array'), []);
+  assert.deepEqual(dedupChains(null), []);
+});
+
+test('parseSnapshot: chain case/whitespace variants deduplicate at parse time', () => {
+  const s = parseSnapshot(JSON.stringify(snap({
+    protocols: [proto({ slug: 'a', chains: ['Ethereum', 'ethereum', ' Ethereum ', 'Solana', 'solana', '', '  '] })],
+    watchlist: ['a'],
+  })));
+  assert.deepEqual(s.protocols[0].chains, ['Ethereum', 'Solana']);
+});
+
+test('impliedValue: breadth counts distinct chains, not cosmetic variants', () => {
+  const live = [proto({ slug: 'l1', category: 'Lending', mcap_usd: 10_000_000, tvl_usd: 100_000_000 })];
+  const multiples = categoryMultiples(live);
+  const one = impliedValue(proto({ chains: ['Ethereum'] }), '2026-11-14', multiples);
+  const variants = impliedValue(proto({ chains: ['Ethereum', 'ethereum', ' Ethereum '] }), '2026-11-14', multiples);
+  const two = impliedValue(proto({ chains: ['Ethereum', 'Solana'] }), '2026-11-14', multiples);
+  assert.equal(one.breadthMult, 1);
+  assert.equal(variants.breadthMult, one.breadthMult);
+  assert.equal(two.breadthMult, 1.02);
+  assert.equal(variants.implied, one.implied);
 });
 
 test('gasToken: known chains resolve, unknown chains are explicit, never a silent ETH default', () => {
