@@ -544,20 +544,27 @@ for this branch — see "What was NOT done (audit v2.6)".
 
 ### P2 — Current output and CI evidence remain incomplete — PARTIAL (CI added; sealed snapshot still not in repo)
 
-- `.github/workflows/ci.yml` (new, separate final commit) — non-deploy CI on
-  push and pull_request: checkout, Node 22, run the full test suite
+- `.github/workflows/ci.yml` + `scripts/synthetic-snapshot.mjs` were prepared
+  as a separate final commit: non-deploy CI on push and pull_request —
+  checkout, Node 24, run the full test suite
   (`node --test tests/model.test.mjs tests/output-path.test.mjs`), then a
-  determinism check that generates a synthetic snapshot
-  (`scripts/synthetic-snapshot.mjs`), runs `main.ts` twice into two
-  directories and byte-compares `board.json`, `data.js` and `dossier.json`.
-  The sealed snapshot is not in the repository and is not published by CI, so
-  the CI determinism check runs on synthetic input; the sealed-snapshot
-  determinism evidence remains the local `scripts/rebuild.sh` run recorded
-  below. No deploy step, no secret, no submission.
-- **CI push status:** the workflow file is pushed with this branch; the push
-  itself is the scope test. If the push is rejected for token scope, the CI
-  commit is dropped from the branch and CI stays BLOCKED — the outcome is
-  recorded in the PR body.
+  determinism check that generates a synthetic snapshot, runs `main.ts` twice
+  into two directories and byte-compares `board.json`, `data.js` and
+  `dossier.json`. The sealed snapshot is not in the repository and is not
+  published by CI, so the CI determinism check runs on synthetic input; the
+  sealed-snapshot determinism evidence remains the local `scripts/rebuild.sh`
+  run recorded below. No deploy step, no secret, no submission. Verified
+  locally before the drop: 76/76 tests pass; two synthetic runs byte-identical
+  (4-row board).
+- **CI push status: BLOCKED.** The push was rejected by GitHub on 2026-11-18:
+  "refusing to allow an OAuth App to create or update workflow
+  `.github/workflows/ci.yml` without `workflow` scope". The `gh` token has
+  scopes `gist`, `read:org`, `repo` and no `workflow` scope. The CI commit
+  (`4e3034a`) was dropped from the branch — it was never pushed — and the
+  two files are preserved outside the repo at
+  `~/workspace/token-radar-ci-blocked/` (with a README) so they can be
+  applied once a token with `workflow` scope is available. No token refresh
+  was requested.
 
 ### Already done in v2.5 — verified present, not redone
 
@@ -599,10 +606,12 @@ for this branch — see "What was NOT done (audit v2.6)".
 3. **Group-trust assumption.** Unchanged: group-writable output directories
    and ancestors are accepted on the assumption that the current user's own
    group is trusted. Documented in the threat-model doc.
-4. **CI is unproven until it runs.** The workflow is written but has never
-   run on GitHub (no runs exist for this repository). If the push is rejected
-   for token scope, CI stays BLOCKED and the commit is dropped from the
-   branch. Even if pushed, the first run on the PR is the first real evidence.
+4. **CI is BLOCKED on token scope.** The workflow was written and verified
+   locally, but GitHub refused the push (no `workflow` scope on the OAuth App
+   token), the commit was dropped, and the files live outside the repo at
+   `~/workspace/token-radar-ci-blocked/`. No CI run has ever existed for this
+   repository. Unblocking needs a token with `workflow` scope (or the owner
+   account pushing the files) — not requested here.
 5. **No resubmission.** The v3 entry remains the live submission; the account
    reputation limit blocks any further submit. Nothing in this branch was
    submitted, and this branch must not be merged without Rama's decision.
@@ -617,9 +626,10 @@ for this branch — see "What was NOT done (audit v2.6)".
   board-gate negatives).
 - `docs/output-path-threat-model.md` (new) + one pointer line in
   `lib/output-path.ts` header comment.
-- `.github/workflows/ci.yml` (new, separate commit) +
-  `scripts/synthetic-snapshot.mjs` (new, deterministic synthetic input for
-  the CI determinism check).
+- CI files prepared then dropped (push rejected, no `workflow` scope):
+  `.github/workflows/ci.yml` + `scripts/synthetic-snapshot.mjs` are NOT in
+  this branch; preserved at `~/workspace/token-radar-ci-blocked/` (see the
+  CI section above).
 - `docs/GPT_AUDIT_V26_2026-11-17.md` (new on this branch, copied from
   `gpt/audit-v25` so the PR is self-contained), this report.
 
