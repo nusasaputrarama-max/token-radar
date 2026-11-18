@@ -273,13 +273,20 @@ export function tokenState(p: SnapshotProtocol): TokenState {
 
 /** Whether a protocol is one the board may rank: pre-token, not an exchange, not versioned. */
 export function isRankable(p: SnapshotProtocol): boolean {
-  return isPreToken(p) && p.category !== 'CEX' && !VERSIONED.test(p.name);
+  return isPreToken(p) && !isCexCategory(p.category) && !VERSIONED.test(p.name);
 }
 
 /** A category key for pooling comparables: trimmed and case-folded, so an inconsistent
  * spelling cannot split one category's pool. The display label stays untouched. */
 export function normCategory(category: string | null): string {
   return (category ?? 'Other').trim().toLowerCase();
+}
+
+/** Whether a category is an exchange: one normalized predicate (trim + case-fold),
+ * so 'CEX', 'cex' and ' CEX ' exclude alike. Every CEX check routes through
+ * this; no call site compares the raw category string. */
+export function isCexCategory(category: string | null): boolean {
+  return normCategory(category) === 'cex';
 }
 
 /** Chain labels deduplicated on a normalized key (trim + case-fold), in input
@@ -418,7 +425,7 @@ function bySlug(protocols: SnapshotProtocol[]): Map<string, SnapshotProtocol> {
 /** The protocols the board ranks, strongest first, with ranks 1..n. */
 export function buildBoard(snapshot: Snapshot, model: ModelConstants = MODEL): BoardRow[] {
   const index = bySlug(snapshot.protocols);
-  const live = snapshot.protocols.filter((p) => !isPreToken(p) && p.category !== 'CEX');
+  const live = snapshot.protocols.filter((p) => !isPreToken(p) && !isCexCategory(p.category));
   const multiples = categoryMultiples(live, model);
   const chosen = new Map<string, SnapshotProtocol>();
   for (const slug of snapshot.watchlist) {
@@ -830,7 +837,7 @@ export const LIVE_UNPRICED_ROWS = 24;
  * snapshot's input order. */
 export function liveRows(snapshot: Snapshot): LiveRow[] {
   return snapshot.protocols
-    .filter((p) => tokenState(p) === 'live-priced' && p.category !== 'CEX')
+    .filter((p) => tokenState(p) === 'live-priced' && !isCexCategory(p.category))
     .sort((a, b) => (b.mcap_usd ?? 0) - (a.mcap_usd ?? 0) || b.tvl_usd - a.tvl_usd || (a.slug < b.slug ? -1 : a.slug > b.slug ? 1 : 0))
     .slice(0, LIVE_ROWS)
     .map((p) => ({
@@ -848,7 +855,7 @@ export function liveRows(snapshot: Snapshot): LiveRow[] {
  * largest TVL first, so the dashboard never calls an unpriced token live. */
 export function liveUnpricedRows(snapshot: Snapshot): LiveRow[] {
   return snapshot.protocols
-    .filter((p) => tokenState(p) === 'unpriced' && p.category !== 'CEX')
+    .filter((p) => tokenState(p) === 'unpriced' && !isCexCategory(p.category))
     .sort((a, b) => b.tvl_usd - a.tvl_usd || (a.slug < b.slug ? -1 : a.slug > b.slug ? 1 : 0))
     .slice(0, LIVE_UNPRICED_ROWS)
     .map((p) => ({
@@ -898,18 +905,19 @@ export function buildRadar(snapshot: Snapshot, model: ModelConstants = MODEL): {
   const excluded = snapshot.protocols.filter(
     (p) => isRankable(p) && !snapshot.watchlist.includes(p.slug) && p.tvl_usd >= snapshot.floor_usd,
   );
-  // The excluded, by their own category: a bridge by name is a bridge, liquid-staking
-  // and restaked BTC are their own categories. The rest are excluded by the supplied
-  // watchlist rule; the snapshot fields do not establish why, so no reason is claimed.
-  const bridges = excluded.filter((p) => (p.category ?? '').toLowerCase().includes('bridge')).length;
-  const liquidStaking = excluded.filter((p) => p.category === 'Liquid Staking').length;
-  const restakedBtc = excluded.filter((p) => p.category === 'Restaked BTC').length;
+  // The excluded, by their own category, on normalized keys: a bridge by name is a
+  // bridge, liquid-staking and restaked BTC are their own categories. The rest are
+  // excluded by the supplied watchlist rule; the snapshot fields do not establish
+  // why, so no reason is claimed.
+  const bridges = excluded.filter((p) => normCategory(p.category).includes('bridge')).length;
+  const liquidStaking = excluded.filter((p) => normCategory(p.category) === 'liquid staking').length;
+  const restakedBtc = excluded.filter((p) => normCategory(p.category) === 'restaked btc').length;
   const other = excluded.length - bridges - liquidStaking - restakedBtc;
   if (bridges + liquidStaking + restakedBtc + other !== excluded.length) {
     throw new SnapshotError('excluded breakdown does not sum to the excluded count');
   }
   const multiples = categoryMultiples(
-    snapshot.protocols.filter((p) => !isPreToken(p) && p.category !== 'CEX'),
+    snapshot.protocols.filter((p) => !isPreToken(p) && !isCexCategory(p.category)),
     model,
   );
   const radar: RadarData = {
@@ -934,7 +942,7 @@ export function buildRadar(snapshot: Snapshot, model: ModelConstants = MODEL): {
     rows: board.map(radarRow),
     live,
     live_unpriced: liveUnpriced,
-    live_unpriced_size: snapshot.protocols.filter((p) => tokenState(p) === 'unpriced' && p.category !== 'CEX').length,
+    live_unpriced_size: snapshot.protocols.filter((p) => tokenState(p) === 'unpriced' && !isCexCategory(p.category)).length,
   };
   return { board, radar };
 }
@@ -976,7 +984,19 @@ export function parseSnapshot(text: string): Snapshot {
     if (typeof p.listed_at === 'string' && !isValidCalendarDate(p.listed_at)) {
       throw new SnapshotError(`snapshot.json's protocol ${i} (${p.slug}) has a malformed listed_at date`);
     }
+    if (p.listed_at !== null && p.listed_at !== undefined && typeof p.listed_at !== 'string') {
+      throw new SnapshotError(`snapshot.json's protocol ${i} (${p.slug}) has a non-string listed_at date`);
+    }
+    if (typeof p.listed_at === 'string' && Date.parse(`${p.listed_at}T00:00:00Z`) > Date.parse(`${o.as_of}T00:00:00Z`)) {
+      throw new SnapshotError(`snapshot.json's protocol ${i} (${p.slug}) has a listed_at date after as_of`);
+    }
     // A zero market cap counts as no market cap: it is unpriced, never a price of $0.
+    // A negative market cap is not a price either, so it normalizes to null here at
+    // the parser boundary. A hard reject would make the sealed snapshot itself
+    // unparseable — it carries one such record (autofinance, mcap_usd -1 with token
+    // metadata, already treated as unpriced) — so the parser refuses the value as
+    // evidence instead of the whole document. Either way a negative cap can never
+    // enter a multiple or a live price: both require a positive market cap.
     const mcap = typeof p.mcap_usd === 'number' && Number.isFinite(p.mcap_usd) ? p.mcap_usd : null;
     return {
       slug: p.slug,
@@ -987,7 +1007,7 @@ export function parseSnapshot(text: string): Snapshot {
       chains: dedupChains(p.chains),
       tvl_usd: p.tvl_usd,
       change_7d: typeof p.change_7d === 'number' && Number.isFinite(p.change_7d) ? p.change_7d : null,
-      mcap_usd: mcap === 0 ? null : mcap,
+      mcap_usd: mcap === null || mcap <= 0 ? null : mcap,
       listed_at: typeof p.listed_at === 'string' ? p.listed_at : null,
       gecko_id: typeof p.gecko_id === 'string' ? p.gecko_id : null,
       symbol: typeof p.symbol === 'string' ? p.symbol : null,

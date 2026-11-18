@@ -17,6 +17,7 @@ import {
   impliedValue,
   iqr,
   isPreToken,
+  isRankable,
   liveRows,
   median,
   neutralModel,
@@ -158,6 +159,40 @@ test('parseSnapshot: non-positive TVL and malformed listing dates fail', () => {
   assert.throws(() => parseSnapshot(JSON.stringify({ ...base, protocols: [proto({ slug: 'a', tvl_usd: -5 })] })), /non-positive TVL/);
   assert.throws(() => parseSnapshot(JSON.stringify({ ...base, protocols: [proto({ slug: 'a', listed_at: '2026-02-30' })] })), /malformed listed_at/);
   assert.throws(() => parseSnapshot(JSON.stringify({ ...base, protocols: [proto({ slug: 'a', listed_at: '14-11-2026' })] })), /malformed listed_at/);
+});
+
+test('parseSnapshot: future and non-string listing dates fail', () => {
+  // snap() sets as_of to 2026-11-14, so 2026-11-15 is one day in the future.
+  const base = snap({ protocols: [proto({ slug: 'a' })], watchlist: ['a'] });
+  assert.throws(() => parseSnapshot(JSON.stringify({ ...base, protocols: [proto({ slug: 'a', listed_at: '2026-11-15' })] })), /listed_at date after as_of/);
+  assert.throws(() => parseSnapshot(JSON.stringify({ ...base, protocols: [proto({ slug: 'a', listed_at: 20240101 })] })), /non-string listed_at/);
+  assert.throws(() => parseSnapshot(JSON.stringify({ ...base, protocols: [proto({ slug: 'a', listed_at: true })] })), /non-string listed_at/);
+  // Null stays null: an unknown listing date is an explicit state, not an error.
+  const s = parseSnapshot(JSON.stringify({ ...base, protocols: [proto({ slug: 'a', listed_at: null })] }));
+  assert.equal(s.protocols[0].listed_at, null);
+  // A valid past date still parses.
+  const t = parseSnapshot(JSON.stringify({ ...base, protocols: [proto({ slug: 'a', listed_at: '2024-01-01' })] }));
+  assert.equal(t.protocols[0].listed_at, '2024-01-01');
+});
+
+test('parseSnapshot: a negative market cap normalizes to null, never a price', () => {
+  // A hard reject would make the sealed snapshot itself unparseable: it carries
+  // one such record (autofinance, mcap_usd -1 with token metadata, already
+  // unpriced). The parser refuses the value as evidence instead of the whole
+  // document; a negative cap can never enter a multiple or a live price.
+  const s = parseSnapshot(JSON.stringify(snap({
+    protocols: [proto({ slug: 'a', mcap_usd: -1, gecko_id: 'x', symbol: 'X' })],
+    watchlist: [],
+  })));
+  assert.equal(s.protocols[0].mcap_usd, null);
+  assert.equal(tokenState(s.protocols[0]), 'unpriced');
+  // Without token metadata, a negative cap is no token evidence at all.
+  const t = parseSnapshot(JSON.stringify(snap({
+    protocols: [proto({ slug: 'b', mcap_usd: -100 })],
+    watchlist: [],
+  })));
+  assert.equal(t.protocols[0].mcap_usd, null);
+  assert.equal(isPreToken(t.protocols[0]), true);
 });
 
 test('parseSnapshot: zero market cap becomes null, chains are deduplicated', () => {
@@ -303,6 +338,35 @@ test('liveRows: only positive market caps, ties break on slug', () => {
   });
   const rows = liveRows(s);
   assert.deepEqual(rows.map((r) => r.slug), ['a-live', 'b-live']);
+});
+
+test('isRankable: CEX exclusion uses one normalized predicate', () => {
+  for (const category of ['CEX', 'cex', ' CEX ', 'Cex', 'cEx']) {
+    assert.equal(isRankable(proto({ category })), false, JSON.stringify(category));
+  }
+  assert.equal(isRankable(proto({ category: 'Lending' })), true);
+  assert.equal(isRankable(proto({ category: null })), true);
+});
+
+test('liveRows: CEX case/whitespace variants never enter the live tab', () => {
+  const s = snap({
+    protocols: [
+      proto({ slug: 'a-live', name: 'A Live', mcap_usd: 5_000_000, gecko_id: 'a', symbol: 'A', tvl_usd: 10_000_000 }),
+      proto({ slug: 'b-cex', name: 'B Cex', category: ' cex ', mcap_usd: 9_000_000, gecko_id: 'b', symbol: 'B', tvl_usd: 90_000_000 }),
+    ],
+  });
+  assert.deepEqual(liveRows(s).map((r) => r.slug), ['a-live']);
+});
+
+test('buildBoard: a CEX-variant watchlist row is refused', () => {
+  const s = snap({
+    protocols: [
+      proto({ slug: 'live-one', name: 'Live One', mcap_usd: 10_000_000, gecko_id: 'live', symbol: 'LIVE', tvl_usd: 100_000_000 }),
+      proto({ slug: 'alpha', category: ' cex ' }),
+    ],
+    watchlist: ['alpha'],
+  });
+  assert.throws(() => buildBoard(s), /not rankable/);
 });
 
 test('buildBoard: implied ties break on slug, ranks are contiguous', () => {
