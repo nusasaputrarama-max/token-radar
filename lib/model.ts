@@ -273,13 +273,20 @@ export function tokenState(p: SnapshotProtocol): TokenState {
 
 /** Whether a protocol is one the board may rank: pre-token, not an exchange, not versioned. */
 export function isRankable(p: SnapshotProtocol): boolean {
-  return isPreToken(p) && p.category !== 'CEX' && !VERSIONED.test(p.name);
+  return isPreToken(p) && !isCexCategory(p.category) && !VERSIONED.test(p.name);
 }
 
 /** A category key for pooling comparables: trimmed and case-folded, so an inconsistent
  * spelling cannot split one category's pool. The display label stays untouched. */
 export function normCategory(category: string | null): string {
   return (category ?? 'Other').trim().toLowerCase();
+}
+
+/** Whether a category is an exchange: one normalized predicate (trim + case-fold),
+ * so 'CEX', 'cex' and ' CEX ' exclude alike. Every CEX check routes through
+ * this; no call site compares the raw category string. */
+export function isCexCategory(category: string | null): boolean {
+  return normCategory(category) === 'cex';
 }
 
 /** Chain labels deduplicated on a normalized key (trim + case-fold), in input
@@ -418,7 +425,7 @@ function bySlug(protocols: SnapshotProtocol[]): Map<string, SnapshotProtocol> {
 /** The protocols the board ranks, strongest first, with ranks 1..n. */
 export function buildBoard(snapshot: Snapshot, model: ModelConstants = MODEL): BoardRow[] {
   const index = bySlug(snapshot.protocols);
-  const live = snapshot.protocols.filter((p) => !isPreToken(p) && p.category !== 'CEX');
+  const live = snapshot.protocols.filter((p) => !isPreToken(p) && !isCexCategory(p.category));
   const multiples = categoryMultiples(live, model);
   const chosen = new Map<string, SnapshotProtocol>();
   for (const slug of snapshot.watchlist) {
@@ -613,7 +620,9 @@ export function gasToken(chain: string): string | null {
   return map[c] ?? null;
 }
 
-/** Capital for one farm position, from the protocol's own TVL. */
+/** Capital for one farm position, from the protocol's own TVL. The bands are
+ * illustrative example amounts only, not a recommendation: the farm steps label
+ * them as such, and no step instructs spending them. */
 function capitalFor(p: SnapshotProtocol): number {
   if (p.tvl_usd >= 1_000_000_000) return 200;
   if (p.tvl_usd >= 100_000_000) return 100;
@@ -654,7 +663,7 @@ export function actionFor(p: SnapshotProtocol, capital: number, chain: string): 
     case 'rwa': return `Verify on ${name}'s official app which yield-bearing asset it offers on ${chain}, what backs it, and what the redemption terms are — the snapshot does not name the asset, so do not mint anything until the app shows it. RWA assets carry issuer and redemption risk, not routine low-risk farming: check the redemption terms first.`;
     case 'insurance': return `Verify on ${name}'s official app which cover it sells on ${chain}, what it covers, and what the premium and expiry are — the snapshot does not list cover products, so do not buy anything until the app shows a product that fits. Cover is not routine low-risk farming: read the policy terms and expiry before paying.`;
     case 'governance': return `Verify on ${name}'s official app whether it has an open governance round on ${chain} and what voting requires — the snapshot does not establish a round, so do not deposit or vote until the app shows one is open.`;
-    case 'chain': return `Verify what one app built on ${name} supports on its own page, then use it and keep a small balance active on its chain; a chain itself takes no deposits. Do not move funds until the app shows what it supports.`;
+    case 'chain': return `Verify what one app built on ${name} supports on its own page; a chain itself takes no deposits. Do not move funds until the app shows what it supports.`;
     case 'payments': return `Verify on ${name}'s official app which payment methods it supports on ${chain} — the snapshot does not list them, so do not top up or spend until the app shows a supported method.`;
     case 'indexes': return `Verify on ${name}'s official app which index it tracks on ${chain} and what its current composition is — the snapshot does not name the index, so do not buy anything until the app shows it.`;
     case 'cedefi': return `Verify on ${name}'s official app which CeDeFi product it offers and what moves between its on-chain and off-chain legs — the snapshot does not name a product, so do not move anything until the app shows one.`;
@@ -710,7 +719,7 @@ function weeklyFor(p: SnapshotProtocol, capital: number, chain: string): string 
     case 'rwa': return `Each week, re-check ${name}'s official app for the asset you verified on ${chain} and confirm the yield and redemption terms before doing anything.`;
     case 'insurance': return `Each week, re-check ${name}'s official app that the cover you verified on ${chain} is still active and confirm the expiry before doing anything.`;
     case 'governance': return `Each week, re-check ${name}'s official app for a new governance round on ${name} and confirm what voting requires before doing anything.`;
-    case 'chain': return `Each week, use one app built on ${chain} through ${name} and keep a small balance active on the chain; verify what it supports on its own page first.`;
+    case 'chain': return `Each week, re-check one app built on ${chain} through ${name} and confirm what it supports on its own page before doing anything.`;
     case 'payments': return `Each week, re-check ${name}'s official app for the payment methods you verified on ${chain} and confirm they are still supported before spending.`;
     case 'indexes': return `Each week, re-check ${name}'s official app for the index you verified on ${chain} and confirm its composition before doing anything.`;
     case 'cedefi': return `Each week, re-check ${name}'s official app for the CeDeFi product you verified and confirm it is still offered before moving anything.`;
@@ -795,7 +804,7 @@ export function farmSteps(p: SnapshotProtocol, age: number | null): FarmStep[] {
     },
     {
       text: actionFor(p, capital, chain),
-      cost: `$${capital} of capital; network fee, variable — check the current fee`,
+      cost: `$${capital} illustrative example capital, not a recommendation; network fee, variable — check the current fee`,
       time: '15 minutes to set up',
     },
     {
@@ -805,7 +814,7 @@ export function farmSteps(p: SnapshotProtocol, age: number | null): FarmStep[] {
     },
     {
       text: `If you verified a supported action and took a position, hold it for at least ${hold} days so the activity is counted in more than one snapshot. If nothing was supported, do not open a position on a guess.`,
-      cost: `the $${capital} stays in the position only if one was opened`,
+      cost: `the $${capital} figure is an illustrative example, not a recommendation; it stays in the position only if one was opened`,
       time: `${hold} days`,
     },
     {
@@ -830,7 +839,7 @@ export const LIVE_UNPRICED_ROWS = 24;
  * snapshot's input order. */
 export function liveRows(snapshot: Snapshot): LiveRow[] {
   return snapshot.protocols
-    .filter((p) => tokenState(p) === 'live-priced' && p.category !== 'CEX')
+    .filter((p) => tokenState(p) === 'live-priced' && !isCexCategory(p.category))
     .sort((a, b) => (b.mcap_usd ?? 0) - (a.mcap_usd ?? 0) || b.tvl_usd - a.tvl_usd || (a.slug < b.slug ? -1 : a.slug > b.slug ? 1 : 0))
     .slice(0, LIVE_ROWS)
     .map((p) => ({
@@ -848,7 +857,7 @@ export function liveRows(snapshot: Snapshot): LiveRow[] {
  * largest TVL first, so the dashboard never calls an unpriced token live. */
 export function liveUnpricedRows(snapshot: Snapshot): LiveRow[] {
   return snapshot.protocols
-    .filter((p) => tokenState(p) === 'unpriced' && p.category !== 'CEX')
+    .filter((p) => tokenState(p) === 'unpriced' && !isCexCategory(p.category))
     .sort((a, b) => b.tvl_usd - a.tvl_usd || (a.slug < b.slug ? -1 : a.slug > b.slug ? 1 : 0))
     .slice(0, LIVE_UNPRICED_ROWS)
     .map((p) => ({
@@ -898,18 +907,19 @@ export function buildRadar(snapshot: Snapshot, model: ModelConstants = MODEL): {
   const excluded = snapshot.protocols.filter(
     (p) => isRankable(p) && !snapshot.watchlist.includes(p.slug) && p.tvl_usd >= snapshot.floor_usd,
   );
-  // The excluded, by their own category: a bridge by name is a bridge, liquid-staking
-  // and restaked BTC are their own categories. The rest are excluded by the supplied
-  // watchlist rule; the snapshot fields do not establish why, so no reason is claimed.
-  const bridges = excluded.filter((p) => (p.category ?? '').toLowerCase().includes('bridge')).length;
-  const liquidStaking = excluded.filter((p) => p.category === 'Liquid Staking').length;
-  const restakedBtc = excluded.filter((p) => p.category === 'Restaked BTC').length;
+  // The excluded, by their own category, on normalized keys: a bridge by name is a
+  // bridge, liquid-staking and restaked BTC are their own categories. The rest are
+  // excluded by the supplied watchlist rule; the snapshot fields do not establish
+  // why, so no reason is claimed.
+  const bridges = excluded.filter((p) => normCategory(p.category).includes('bridge')).length;
+  const liquidStaking = excluded.filter((p) => normCategory(p.category) === 'liquid staking').length;
+  const restakedBtc = excluded.filter((p) => normCategory(p.category) === 'restaked btc').length;
   const other = excluded.length - bridges - liquidStaking - restakedBtc;
   if (bridges + liquidStaking + restakedBtc + other !== excluded.length) {
     throw new SnapshotError('excluded breakdown does not sum to the excluded count');
   }
   const multiples = categoryMultiples(
-    snapshot.protocols.filter((p) => !isPreToken(p) && p.category !== 'CEX'),
+    snapshot.protocols.filter((p) => !isPreToken(p) && !isCexCategory(p.category)),
     model,
   );
   const radar: RadarData = {
@@ -934,7 +944,7 @@ export function buildRadar(snapshot: Snapshot, model: ModelConstants = MODEL): {
     rows: board.map(radarRow),
     live,
     live_unpriced: liveUnpriced,
-    live_unpriced_size: snapshot.protocols.filter((p) => tokenState(p) === 'unpriced' && p.category !== 'CEX').length,
+    live_unpriced_size: snapshot.protocols.filter((p) => tokenState(p) === 'unpriced' && !isCexCategory(p.category)).length,
   };
   return { board, radar };
 }
@@ -976,7 +986,19 @@ export function parseSnapshot(text: string): Snapshot {
     if (typeof p.listed_at === 'string' && !isValidCalendarDate(p.listed_at)) {
       throw new SnapshotError(`snapshot.json's protocol ${i} (${p.slug}) has a malformed listed_at date`);
     }
+    if (p.listed_at !== null && p.listed_at !== undefined && typeof p.listed_at !== 'string') {
+      throw new SnapshotError(`snapshot.json's protocol ${i} (${p.slug}) has a non-string listed_at date`);
+    }
+    if (typeof p.listed_at === 'string' && Date.parse(`${p.listed_at}T00:00:00Z`) > Date.parse(`${o.as_of}T00:00:00Z`)) {
+      throw new SnapshotError(`snapshot.json's protocol ${i} (${p.slug}) has a listed_at date after as_of`);
+    }
     // A zero market cap counts as no market cap: it is unpriced, never a price of $0.
+    // A negative market cap is not a price either, so it normalizes to null here at
+    // the parser boundary. A hard reject would make the sealed snapshot itself
+    // unparseable — it carries one such record (autofinance, mcap_usd -1 with token
+    // metadata, already treated as unpriced) — so the parser refuses the value as
+    // evidence instead of the whole document. Either way a negative cap can never
+    // enter a multiple or a live price: both require a positive market cap.
     const mcap = typeof p.mcap_usd === 'number' && Number.isFinite(p.mcap_usd) ? p.mcap_usd : null;
     return {
       slug: p.slug,
@@ -987,7 +1009,7 @@ export function parseSnapshot(text: string): Snapshot {
       chains: dedupChains(p.chains),
       tvl_usd: p.tvl_usd,
       change_7d: typeof p.change_7d === 'number' && Number.isFinite(p.change_7d) ? p.change_7d : null,
-      mcap_usd: mcap === 0 ? null : mcap,
+      mcap_usd: mcap === null || mcap <= 0 ? null : mcap,
       listed_at: typeof p.listed_at === 'string' ? p.listed_at : null,
       gecko_id: typeof p.gecko_id === 'string' ? p.gecko_id : null,
       symbol: typeof p.symbol === 'string' ? p.symbol : null,
@@ -1011,7 +1033,8 @@ export function parseSnapshot(text: string): Snapshot {
 }
 
 /** Why a board is not one the gate will take, or null: exact eligible-set coverage,
- * unique slugs, watchlist members present and pre-token, ranks, order, one shared
+ * unique slugs, watchlist members present and pre-token, ranks bound to row
+ * position, order with the slug tie-break on equal implied values, one shared
  * implied value, and farm steps. The expected set is the watchlist plus every
  * rankable pre-token protocol below the floor, each exactly once. */
 export function boardIssue(board: BoardRow[], snapshot: Snapshot): string | null {
@@ -1034,10 +1057,26 @@ export function boardIssue(board: BoardRow[], snapshot: Snapshot): string | null
     const p = index.get(slug);
     if (p === undefined) return `watchlist slug ${slug} is not in the snapshot`;
     if (!isPreToken(p)) return `watchlist slug ${slug} is not pre-token`;
+    // The gate enforces the full watchlist contract itself: buildBoard() also
+    // rejects these, but a board handed to this gate directly must not pass
+    // with a CEX/versioned or below-floor watchlist member.
+    if (!isRankable(p)) return `watchlist slug ${slug} is not rankable (exchange or versioned pool)`;
+    if (p.tvl_usd < snapshot.floor_usd) return `watchlist slug ${slug} is below the $${snapshot.floor_usd} floor`;
   }
-  const ranks = board.map((r) => r.rank).sort((a, b) => a - b);
-  for (let i = 0; i < ranks.length; i++) if (ranks[i] !== i + 1) return `rank ${i + 1} is ${ranks[i]}`;
-  for (let i = 1; i < board.length; i++) if (board[i]!.implied_value_usd > board[i - 1]!.implied_value_usd) return `row ${i + 1} outranks row ${i} on implied value`;
+  // Rank is bound to row position: row i+1 must carry rank i+1. Sorting the
+  // rank values first (the old check) would accept a board whose ranks were
+  // swapped between rows, so the gate reads each row's own rank in place.
+  for (let i = 0; i < board.length; i++) {
+    if (board[i]!.rank !== i + 1) return `row ${i + 1} has rank ${board[i]!.rank}, expected ${i + 1}`;
+  }
+  for (let i = 1; i < board.length; i++) {
+    if (board[i]!.implied_value_usd > board[i - 1]!.implied_value_usd) return `row ${i + 1} outranks row ${i} on implied value`;
+    // Equal implied values tie-break on slug ascending: a reordered tie is a
+    // different board, not the same ranking.
+    if (board[i]!.implied_value_usd === board[i - 1]!.implied_value_usd && board[i - 1]!.slug > board[i]!.slug) {
+      return `rows ${i} and ${i + 1} tie on implied value $${board[i]!.implied_value_usd} but slugs are out of order (${board[i - 1]!.slug} before ${board[i]!.slug})`;
+    }
+  }
   if (board.length >= 2 && board[0]!.implied_value_usd === board[board.length - 1]!.implied_value_usd) {
     return `all ${board.length} rows share the same implied value $${board[0]!.implied_value_usd}: a board that ranks nothing by value is not a ranking`;
   }

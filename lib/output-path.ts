@@ -39,7 +39,9 @@ import { join, parse, resolve, sep } from 'node:path';
  * cannot defend against a privileged attacker or an owner of a parent
  * directory. The design narrows the window to one entry at a time and fails
  * closed on every checkable condition; it does not claim to eliminate all
- * symlink-redirection races.
+ * symlink-redirection races. The full threat model, including the
+ * trusted-parent and group-trust assumptions and what a stronger guarantee
+ * would need, is in `docs/output-path-threat-model.md` (audit v2.6 P2).
  */
 export function safeOutputPath(outputPath: string, repositoryRoot: string): string {
   const output = resolve(outputPath);

@@ -17,6 +17,7 @@ import {
   impliedValue,
   iqr,
   isPreToken,
+  isRankable,
   liveRows,
   median,
   neutralModel,
@@ -160,6 +161,40 @@ test('parseSnapshot: non-positive TVL and malformed listing dates fail', () => {
   assert.throws(() => parseSnapshot(JSON.stringify({ ...base, protocols: [proto({ slug: 'a', listed_at: '14-11-2026' })] })), /malformed listed_at/);
 });
 
+test('parseSnapshot: future and non-string listing dates fail', () => {
+  // snap() sets as_of to 2026-11-14, so 2026-11-15 is one day in the future.
+  const base = snap({ protocols: [proto({ slug: 'a' })], watchlist: ['a'] });
+  assert.throws(() => parseSnapshot(JSON.stringify({ ...base, protocols: [proto({ slug: 'a', listed_at: '2026-11-15' })] })), /listed_at date after as_of/);
+  assert.throws(() => parseSnapshot(JSON.stringify({ ...base, protocols: [proto({ slug: 'a', listed_at: 20240101 })] })), /non-string listed_at/);
+  assert.throws(() => parseSnapshot(JSON.stringify({ ...base, protocols: [proto({ slug: 'a', listed_at: true })] })), /non-string listed_at/);
+  // Null stays null: an unknown listing date is an explicit state, not an error.
+  const s = parseSnapshot(JSON.stringify({ ...base, protocols: [proto({ slug: 'a', listed_at: null })] }));
+  assert.equal(s.protocols[0].listed_at, null);
+  // A valid past date still parses.
+  const t = parseSnapshot(JSON.stringify({ ...base, protocols: [proto({ slug: 'a', listed_at: '2024-01-01' })] }));
+  assert.equal(t.protocols[0].listed_at, '2024-01-01');
+});
+
+test('parseSnapshot: a negative market cap normalizes to null, never a price', () => {
+  // A hard reject would make the sealed snapshot itself unparseable: it carries
+  // one such record (autofinance, mcap_usd -1 with token metadata, already
+  // unpriced). The parser refuses the value as evidence instead of the whole
+  // document; a negative cap can never enter a multiple or a live price.
+  const s = parseSnapshot(JSON.stringify(snap({
+    protocols: [proto({ slug: 'a', mcap_usd: -1, gecko_id: 'x', symbol: 'X' })],
+    watchlist: [],
+  })));
+  assert.equal(s.protocols[0].mcap_usd, null);
+  assert.equal(tokenState(s.protocols[0]), 'unpriced');
+  // Without token metadata, a negative cap is no token evidence at all.
+  const t = parseSnapshot(JSON.stringify(snap({
+    protocols: [proto({ slug: 'b', mcap_usd: -100 })],
+    watchlist: [],
+  })));
+  assert.equal(t.protocols[0].mcap_usd, null);
+  assert.equal(isPreToken(t.protocols[0]), true);
+});
+
 test('parseSnapshot: zero market cap becomes null, chains are deduplicated', () => {
   const s = parseSnapshot(JSON.stringify(snap({
     protocols: [proto({ slug: 'a', mcap_usd: 0, gecko_id: 'x', symbol: 'X', chains: ['Ethereum', 'Ethereum', 'Base'] })],
@@ -282,6 +317,31 @@ test('farmSteps: missing evidence never produces a financial action or rewards c
   }
 });
 
+/** v2.8 (carried from v2.7): the chain family must not recommend keeping a
+ * balance active, and every dollar capital figure must be labelled an
+ * illustrative example, never a prescription. */
+test('farmSteps: no balance recommendation anywhere; capital is illustrative, never prescriptive', () => {
+  for (const [label, category] of FAMILY_FIXTURES) {
+    const steps = farmSteps(proto({ slug: `fix-${label}`, category, chains: ['Ethereum'] }), 100);
+    const joined = steps.map((s) => `${s.text} Cost: ${s.cost}. Time: ${s.time}.`).join(' ');
+    assert.doesNotMatch(joined, /keep a small balance active/i, `${label}: balance recommendation`);
+    assert.doesNotMatch(joined, /small balance/i, `${label}: balance wording`);
+    for (const s of steps) {
+      if (/\$\d+/.test(s.cost)) assert.match(s.cost, /illustrative example.*not a recommendation/i, `${label}: ${s.cost}`);
+    }
+  }
+  // The chain family specifically: entry and weekly are verify-first, with no
+  // instruction to use an app or hold a balance.
+  const chain = farmSteps(proto({ category: 'Chain', chains: ['Ethereum'] }), 100);
+  assert.match(chain[1].text, /^Verify/, 'chain entry is verify-first');
+  assert.match(chain[1].text, /do not .* until the app shows/i, 'chain entry');
+  assert.match(chain[2].text, /re-check/i, 'chain weekly re-checks');
+  assert.doesNotMatch(chain[2].text, /use one app/i, 'chain weekly');
+  // Step 2 and the hold step still name the capital bands, labelled as examples.
+  assert.match(chain[1].cost, /^\$50 illustrative example capital, not a recommendation/, 'chain step-2 cost');
+  assert.match(chain[3].cost, /illustrative example, not a recommendation/, 'chain hold cost');
+});
+
 test('farm families: leveraged and speculative actions carry a risk note', () => {
   const risky = { derivatives: 'Derivatives', prediction: 'Prediction Market', insurance: 'Insurance', rwa: 'RWA' };
   for (const [label, category] of Object.entries(risky)) {
@@ -303,6 +363,35 @@ test('liveRows: only positive market caps, ties break on slug', () => {
   });
   const rows = liveRows(s);
   assert.deepEqual(rows.map((r) => r.slug), ['a-live', 'b-live']);
+});
+
+test('isRankable: CEX exclusion uses one normalized predicate', () => {
+  for (const category of ['CEX', 'cex', ' CEX ', 'Cex', 'cEx']) {
+    assert.equal(isRankable(proto({ category })), false, JSON.stringify(category));
+  }
+  assert.equal(isRankable(proto({ category: 'Lending' })), true);
+  assert.equal(isRankable(proto({ category: null })), true);
+});
+
+test('liveRows: CEX case/whitespace variants never enter the live tab', () => {
+  const s = snap({
+    protocols: [
+      proto({ slug: 'a-live', name: 'A Live', mcap_usd: 5_000_000, gecko_id: 'a', symbol: 'A', tvl_usd: 10_000_000 }),
+      proto({ slug: 'b-cex', name: 'B Cex', category: ' cex ', mcap_usd: 9_000_000, gecko_id: 'b', symbol: 'B', tvl_usd: 90_000_000 }),
+    ],
+  });
+  assert.deepEqual(liveRows(s).map((r) => r.slug), ['a-live']);
+});
+
+test('buildBoard: a CEX-variant watchlist row is refused', () => {
+  const s = snap({
+    protocols: [
+      proto({ slug: 'live-one', name: 'Live One', mcap_usd: 10_000_000, gecko_id: 'live', symbol: 'LIVE', tvl_usd: 100_000_000 }),
+      proto({ slug: 'alpha', category: ' cex ' }),
+    ],
+    watchlist: ['alpha'],
+  });
+  assert.throws(() => buildBoard(s), /not rankable/);
 });
 
 test('buildBoard: implied ties break on slug, ranks are contiguous', () => {
@@ -343,6 +432,76 @@ test('boardIssue: exact eligible-set coverage, missing and extra rows fail', () 
   assert.match(boardIssue(extra, s), /outside the eligible set/);
   const dup = [...board, { ...board[0], rank: 4 }];
   assert.match(boardIssue(dup, s), /duplicate slugs/);
+});
+
+test('boardIssue: ranks are bound to row position, not just contiguous', () => {
+  const s = snap({
+    protocols: [
+      proto({ slug: 'live-one', name: 'Live One', mcap_usd: 10_000_000, gecko_id: 'live', symbol: 'LIVE', tvl_usd: 100_000_000 }),
+      proto({ slug: 'alpha', name: 'Alpha', tvl_usd: 60_000_000 }),
+      proto({ slug: 'beta', name: 'Beta', tvl_usd: 70_000_000 }),
+      proto({ slug: 'gamma', name: 'Gamma', tvl_usd: 10_000_000 }),
+    ],
+    watchlist: ['alpha', 'beta'],
+  });
+  const board = buildBoard(s);
+  assert.equal(boardIssue(board, s), null);
+  // Swap the rank fields of the first two rows: the set {1,2,3} is still
+  // contiguous, so the old sorted-ranks check would have accepted this.
+  const swapped = [{ ...board[0], rank: 2 }, { ...board[1], rank: 1 }, board[2]];
+  assert.match(boardIssue(swapped, s), /row 1 has rank 2, expected 1/);
+});
+
+test('boardIssue: equal implied values tie-break on slug ascending', () => {
+  const s = snap({
+    protocols: [
+      proto({ slug: 'live-one', name: 'Live One', mcap_usd: 10_000_000, gecko_id: 'live', symbol: 'LIVE', tvl_usd: 100_000_000 }),
+      proto({ slug: 'c-proto', name: 'Bigger', tvl_usd: 80_000_000 }),
+      proto({ slug: 'b-proto', name: 'Same', tvl_usd: 60_000_000 }),
+      proto({ slug: 'a-proto', name: 'Same', tvl_usd: 60_000_000 }),
+    ],
+    watchlist: ['c-proto', 'b-proto', 'a-proto'],
+  });
+  const board = buildBoard(s);
+  assert.equal(board[1].slug, 'a-proto');
+  assert.equal(board[2].slug, 'b-proto');
+  assert.equal(board[1].implied_value_usd, board[2].implied_value_usd);
+  assert.equal(boardIssue(board, s), null);
+  // Reverse the tied rows, ranks matching their new positions: ranks are
+  // contiguous and implied is non-increasing, so only the tie-break catches it.
+  const reversed = [board[0], { ...board[2], rank: 2 }, { ...board[1], rank: 3 }];
+  assert.match(boardIssue(reversed, s), /tie on implied value.*out of order/);
+});
+
+test('boardIssue: a CEX, versioned or below-floor watchlist member fails the gate directly', () => {
+  const live = proto({ slug: 'live-one', name: 'Live One', mcap_usd: 10_000_000, gecko_id: 'live', symbol: 'LIVE', tvl_usd: 100_000_000 });
+  const base = snap({
+    protocols: [
+      live,
+      proto({ slug: 'alpha', name: 'Alpha', tvl_usd: 60_000_000 }),
+      proto({ slug: 'beta', name: 'Beta', tvl_usd: 70_000_000 }),
+    ],
+    watchlist: ['alpha', 'beta'],
+  });
+  const board = buildBoard(base);
+  assert.equal(boardIssue(board, base), null);
+  // buildBoard refuses these, and the gate must too when handed the board
+  // directly: a crafted board/snapshot pair must not pass on coverage alone.
+  const cex = snap({
+    protocols: [live, proto({ slug: 'alpha', name: 'Alpha', category: 'CEX', tvl_usd: 60_000_000 }), proto({ slug: 'beta', name: 'Beta', tvl_usd: 70_000_000 })],
+    watchlist: ['alpha', 'beta'],
+  });
+  assert.match(boardIssue(board, cex), /not rankable/);
+  const versioned = snap({
+    protocols: [live, proto({ slug: 'alpha', name: 'Alpha V2', tvl_usd: 60_000_000 }), proto({ slug: 'beta', name: 'Beta', tvl_usd: 70_000_000 })],
+    watchlist: ['alpha', 'beta'],
+  });
+  assert.match(boardIssue(board, versioned), /not rankable/);
+  const belowFloor = snap({
+    protocols: [live, proto({ slug: 'alpha', name: 'Alpha', tvl_usd: 10_000_000 }), proto({ slug: 'beta', name: 'Beta', tvl_usd: 70_000_000 })],
+    watchlist: ['alpha', 'beta'],
+  });
+  assert.match(boardIssue(board, belowFloor), /below the \$50000000 floor/);
 });
 
 test('buildBoard: a non-pre-token watchlist row is refused', () => {
