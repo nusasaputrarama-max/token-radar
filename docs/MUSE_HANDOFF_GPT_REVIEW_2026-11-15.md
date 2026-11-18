@@ -136,3 +136,36 @@ rewritten or force-pushed.
 - `scripts/rebuild.sh` performs two fresh runs and byte-compares the three generated artefacts, but its claimed 226-row sealed-snapshot result was not independently reproduced.
 
 **Status:** ACCEPTANCE OPEN. Keep PR #5 unmerged pending the findings above. No deployment, resubmission, token launch, transaction, or spending is authorized by this review.
+
+
+---
+
+## Independent follow-up — v2.9 review of current PR #5 head (2026-11-18)
+
+**Reviewed branch:** `muse/audit-v26-fixes`  
+**Current head:** `830525b62ad893cfb40ca91111a79098e2f07daf`  
+**Previously reviewed head:** `a3e7c1fb07a8df636372c03a75c0157e2d3b06ac`  
+**Base:** `main` at `9e6d5bb07648d59ccd1258665037de52a4a303dd`  
+**Audit:** `docs/GPT_AUDIT_V29_2026-11-18.md`  
+**PR:** #5, OPEN and not merged.
+
+### v2.8 findings updated
+
+1. **Board gate watchlist eligibility — SOURCE FIX PRESENT.** `boardIssue()` now independently requires each watchlist member to exist, be pre-token, pass `isRankable()`, and meet the TVL floor. New direct negative tests cover CEX, versioned, and below-floor cases. Reviewer-side test execution remains outstanding.
+2. **Farm-plan wording — SOURCE FIX PRESENT.** Chain entry and weekly steps no longer recommend keeping a small balance active. Dollar-denominated capital cost fields explicitly label the $50/$100/$200 bands illustrative and not recommendations. A new test checks all 28 family fixtures and all six rendered steps. Reviewer-side execution remains outstanding.
+
+### Evidence and blockers retained
+
+- PR #5 current head is four commits ahead of the v2.8 reviewed head; only commit `3a7a413` changes application logic/tests in this delta. PR #5 is nine commits ahead of main and remains OPEN.
+- The source contains 78 test cases (68 model, including 28 generated family fixtures, plus 10 output-path). The remediation report claims 78/78 pass; this reviewer did not run tests. A shallow clone failed before checkout because `github.com` DNS could not be resolved.
+- The sealed snapshot is not in the repository. `scripts/rebuild.sh` is structured for two-run byte comparison and 226-row checks, but no sealed-snapshot rebuild or board/hash comparison was independently run.
+- Dashboard static isolation remains PASS: local asset references only and no network primitives/external CSS URL found in static scans. Dashboard blob SHAs match main. No browser runtime/accessibility pass was run.
+- CI remains BLOCKED: no workflow file, no synthetic-snapshot helper, no combined status checks, and no PR workflow runs. The documented missing `workflow` token scope remains unresolved.
+- Growth/maturity calibration remains OPEN/PARTIAL; model constants are unchanged and no owner decision authorizes recalibration.
+- Accessibility keyboard, screen-reader, and manual-device checks remain NOT TESTED.
+- Output-path security remains PARTIAL: trusted-group assumption and residual check-then-use TOCTOU remain; current tests do not exercise a concurrent swap after the final per-entry check.
+- Negative market-cap handling still normalizes a negative value to null rather than hard-rejecting it. The cited sealed-snapshot example was not independently inspected.
+- PR #5 and its commits are authored/committed by `nusasaputrarama-max`; collaborator lookup remains `muse=read`, `muse-ai=none`. Do not attribute the batch to Muse without identity/permission evidence.
+- PR #5 description and the v2.8 remediation-report head metadata are stale. PR #6 is based on the old `a3e7c1f` revision and has diverged from the current PR #5 branch; reconcile it rather than merging blindly.
+
+**Status: ACCEPTANCE OPEN.** Keep PR #5 unmerged pending independent tests/rebuild evidence, CI, accessibility, the remaining security/calibration decisions, and attribution clarity. No deployment, resubmission, token launch, transaction, or spending is authorized.
