@@ -99,3 +99,40 @@ live entry and resubmission needs Rama's approval of this exact commit; no trans
 bundle (main agent bundles later). The already-pushed `bee5190` commit was not
 rewritten or force-pushed.
 
+
+---
+
+## Independent follow-up — v2.8 review of PR #5 (2026-11-18)
+
+**Reviewed branch:** `muse/audit-v26-fixes`  
+**Head:** `a3e7c1fb07a8df636372c03a75c0157e2d3b06ac`  
+**Base:** `main` at `9e6d5bb07648d59ccd1258665037de52a4a303dd`  
+**Review:** `docs/GPT_AUDIT_V28_2026-11-18.md`  
+**PR:** #5, OPEN and not merged.
+
+### v2.6 changes confirmed in source
+
+- Future and non-string non-null `listed_at` values are rejected.
+- Negative finite market caps normalize to `null` rather than hard-failing. This is a documented deviation because the PR/report says the sealed snapshot contains one negative-cap record with token metadata. The snapshot itself was not available for independent inspection.
+- CEX exclusion now uses one normalized predicate across rankability, comparables, and live rows.
+- `boardIssue()` binds rank to row position and enforces slug order for equal implied values.
+- The output-path threat model now documents the residual TOCTOU interval and trusted-group assumption. The race is not fixed.
+
+### Remaining findings and blockers
+
+1. **Board gate residual (P2):** `buildBoard()` checks watchlist rankability and the TVL floor, but `boardIssue()` only checks that watchlist rows exist and are pre-token. Add the same rankability/floor invariants to the gate and direct negative tests.
+2. **Farm-plan wording (P1/P2, carried from v2.7):** the chain entry and weekly steps still recommend keeping a small balance active. Step costs still state TVL-derived `$50/$100/$200` capital without an illustrative/non-prescriptive label. Existing tests do not catch these phrases.
+3. **CI (BLOCKED):** `.github/workflows/ci.yml` and the synthetic-snapshot workflow helper are not in the branch. The PR/report records a rejected push because the OAuth token lacks `workflow` scope. PR-head status checks and workflow runs are empty.
+4. **Independent verification (BLOCKED):** the sealed snapshot is not in the repository. A shallow clone attempt failed before checkout because `github.com` DNS could not be resolved. No tests or rebuild were run by the reviewer. The PR's 76/76 and byte-identity results remain implementer-reported.
+5. **Growth/maturity (PARTIAL):** sensitivity analysis exists, but model constants remain uncalibrated; no owner decision authorizes a model change.
+6. **Accessibility (NOT TESTED):** keyboard, screen-reader, and manual-device pass remains outstanding.
+7. **Output-path security (PARTIAL):** residual check-then-use TOCTOU and group-trust assumptions are documented, not eliminated.
+8. **Muse identity/access (BLOCKED):** PR #5 and the latest commit are attributed to `nusasaputrarama-max`; collaborator lookup reports `muse=read` and `muse-ai=none`. The branch prefix does not prove Muse authorship or write access.
+
+### Review notes
+
+- Dashboard static isolation passed: only local HTML assets are referenced; no runtime network primitives or external CSS URLs were found in static source scans. No browser runtime test was run.
+- Source contains 66 model test cases (38 literal declarations plus 28 generated family-fixture cases) and 10 output-path cases. Six model tests are conditional on the sealed snapshot. The claimed 76/76 run was not independently reproduced.
+- `scripts/rebuild.sh` performs two fresh runs and byte-compares the three generated artefacts, but its claimed 226-row sealed-snapshot result was not independently reproduced.
+
+**Status:** ACCEPTANCE OPEN. Keep PR #5 unmerged pending the findings above. No deployment, resubmission, token launch, transaction, or spending is authorized by this review.
