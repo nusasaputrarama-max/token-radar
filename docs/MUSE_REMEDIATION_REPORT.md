@@ -450,3 +450,188 @@ not altered by any of this.
 - No model constant changed; no recalibration of growth or maturity.
 - No submission or resubmission to make.fun.
 - The sealed snapshot was not committed, and no secret was added to the repo.
+
+---
+
+# Audit v2.6 — follow-up (branch `muse/audit-v26-fixes`, PR pending)
+
+**Repository:** `nusasaputrarama-max/token-radar`
+**Audited base:** `3b61c7d0d3515586ea7c6df9e07ce74007df50a0` (audit v2.6 reviewed the
+guard-merge state, before the v2.5 implementation)
+**Branch base:** `9e6d5bb07648d59ccd1258665037de52a4a303dd` (v2.5 implementation,
+all 5 v2.5 findings done)
+**Audit:** `docs/GPT_AUDIT_V26_2026-11-17.md` (branch `gpt/audit-v25`, head
+`7aee7e0`; copied into this branch at the PR author's request — the audit doc
+itself lives on the audit branch)
+**Identity:** author and committer `nusasaputrarama-max
+<353745658+nusasaputrarama-max@users.noreply.github.com>` (verified with
+`git config user.name` / `git config user.email` before every commit)
+**Date:** 2026-11-18
+**Status:** the v2.6 items in scope are addressed on a feature branch; nothing
+is merged. The v2.6 items already fixed by the v2.5 implementation (farm
+verify-first, Yield Aggregator precedence, sensitivity diagnostic) were
+verified present, not redone. The v2.7-only items (farm-plan balance
+instruction and capital-band labelling, accessibility pass) are out of scope
+for this branch — see "What was NOT done (audit v2.6)".
+
+## Per-finding status
+
+### P1 — Snapshot validation still accepts malformed values — FIXED (with one deliberate deviation)
+
+- `lib/model.ts:988` — a non-string, non-null `listed_at` now fails closed
+  (`has a non-string listed_at date`); `:991` — a string `listed_at` later
+  than `as_of` fails closed (`has a listed_at date after as_of`). Null stays
+  null: an unknown listing date is an explicit state, not an error.
+- `lib/model.ts:1010` — a negative finite `mcap_usd` normalizes to `null` at
+  the parser boundary instead of being retained as a price. **Deviation from
+  the audit's literal request (hard reject), with evidence:** the sealed
+  snapshot itself carries one such record — `autofinance`, `mcap_usd: -1`,
+  with `gecko_id: "tokemak"` and `symbol: "TOKE"`, TVL $33,411,068, not on
+  the watchlist — and a hard reject would make the sealed input unparseable,
+  so the entry could never be reproduced from its own snapshot. The parser
+  refuses the value as evidence instead of the whole document. The audit's
+  intent is preserved either way: a negative cap can never enter a multiple
+  (`categoryMultiples` requires a positive cap) or a live price
+  (`tokenState` requires a positive cap), and the record stays `unpriced`
+  exactly as before. Verified: the sealed snapshot parses, and the branch
+  outputs are byte-identical to the 9e6d5bb baseline (see Verification) —
+  the normalized value never reaches an output (autofinance is outside the
+  top-24 live-unpriced rows the dashboard carries).
+- `lib/model.ts:288` `isCexCategory()` — one normalized predicate
+  (`normCategory(category) === 'cex'`), used by `isRankable` (`:276`), the
+  live pool (`:428`), `liveRows` (`:840`), `liveUnpricedRows` (`:858`), the
+  comparables filter (`:920`) and `live_unpriced_size` (`:945`). The
+  excluded-breakdown filters (`:911-913`) use normalized keys too
+  (`normCategory(...).includes('bridge')`, `=== 'liquid staking'`,
+  `=== 'restaked btc'`). Display labels are untouched.
+- Tests: `tests/model.test.mjs:164` (future and non-string `listed_at` fail;
+  null stays null; a valid past date parses), `:178` (negative mcap
+  normalizes to null; the record stays `unpriced` with token metadata),
+  `:343` (CEX exclusion: `CEX`, `cex`, ` CEX `, `Cex`, `cEx` all excluded),
+  `:351` (a ` cex ` live protocol never enters the live tab), `:361` (a
+  ` cex ` watchlist row is refused as not rankable).
+
+### P1 — Board gate does not bind row order to rank or enforce the tie-break — FIXED
+
+- `lib/model.ts:1063` — the gate now reads each row's own rank in place
+  (`board[i].rank` must equal `i + 1`); the old sorted-ranks check, which
+  would have accepted two swapped rank fields, is gone. `:1070` — adjacent
+  rows with equal implied values must be in ascending slug order, or the gate
+  refuses the board as a different ranking.
+- Tests: `tests/model.test.mjs:412` (swapped rank fields: the set {1,2,3} is
+  still contiguous, so only the position binding catches it), `:430`
+  (equal-value rows in reverse slug order with ranks matching their
+  positions: only the tie-break catches it). Both fixtures build on the
+  existing tied-board fixture, whose valid form still passes the gate.
+
+### P2 — Output-path guard is useful but not atomic — DOCUMENTED (no code change)
+
+- `docs/output-path-threat-model.md` (new) — states what the guard guarantees
+  (static unsafe paths only), the adversary (a local process with write access
+  to a parent directory; no remote attacker; a privileged attacker or a
+  parent-directory owner is out of scope), the trusted-parent assumption
+  (other-writable non-sticky parents fail closed; sticky-bit parents accepted;
+  group-writable accepted on the trusted-group assumption, calibration
+  `8d071f7`), and the residual check-then-use race: the window between the
+  final per-entry check and its `rmSync` cannot be closed by path-based
+  checks, and the existing adversarial tests swap a component *before* the
+  final check, so they do not exercise a swap after it. No race elimination
+  is claimed. Operational guidance and what a stronger guarantee would need
+  (descriptor-relative cleanup, or a private directory created by the run)
+  are recorded as future work.
+- `lib/output-path.ts` header comment points at the document. No code changed:
+  documentation is the required deliverable for this finding.
+
+### P2 — Current output and CI evidence remain incomplete — PARTIAL (CI added; sealed snapshot still not in repo)
+
+- `.github/workflows/ci.yml` (new, separate final commit) — non-deploy CI on
+  push and pull_request: checkout, Node 22, run the full test suite
+  (`node --test tests/model.test.mjs tests/output-path.test.mjs`), then a
+  determinism check that generates a synthetic snapshot
+  (`scripts/synthetic-snapshot.mjs`), runs `main.ts` twice into two
+  directories and byte-compares `board.json`, `data.js` and `dossier.json`.
+  The sealed snapshot is not in the repository and is not published by CI, so
+  the CI determinism check runs on synthetic input; the sealed-snapshot
+  determinism evidence remains the local `scripts/rebuild.sh` run recorded
+  below. No deploy step, no secret, no submission.
+- **CI push status:** the workflow file is pushed with this branch; the push
+  itself is the scope test. If the push is rejected for token scope, the CI
+  commit is dropped from the branch and CI stays BLOCKED — the outcome is
+  recorded in the PR body.
+
+### Already done in v2.5 — verified present, not redone
+
+- P1 farm/rewards verify-first rewrite: `lib/model.ts` `actionFor` /
+  `weeklyFor` / `claimFor` are verify-first and non-transactional; the
+  sealed-snapshot tests pin this (`tests/model.test.mjs`, sealed snapshot:
+  every farm plan is verify-first).
+- P2 Yield Aggregator precedence: `familyFor` checks the curator/aggregator
+  rule before the DEX `yield` rule, on `normCategory`; fixtures assert
+  `curator` for Yield Aggregator and whitespace/case variants.
+- P1-02 sensitivity diagnostic: `neutralModel()` / `sensitivityAnalysis()`
+  and `docs/sensitivity-2026-11-17.md` exist; the growth weights and
+  maturity curve are unchanged (see "What was NOT done").
+
+## Verification (branch `muse/audit-v26-fixes`, 2026-11-18, from `~/workspace/token-radar`)
+
+| Check | Command / source | Result |
+|---|---|---|
+| Unit tests | `node --test tests/model.test.mjs tests/output-path.test.mjs` | **76/76 pass, 0 fail** (66 model + 10 output-path; was 69/69 on main — 7 new: 5 snapshot-validation/CEX, 2 board-gate negatives) |
+| Determinism | `sh scripts/rebuild.sh <sealed snapshot>` | **board.json, data.js and dossier.json byte-identical across two fresh runs**; 226 rows, ranks 1–226, implied non-increasing, watchlist 40/40, 186 early, farm steps in range |
+| Baseline regeneration | `git worktree add /tmp/token-radar-baseline-9e6d5bb 9e6d5bb`, `MAKEFUN_OUTPUT_DIR=… node main.ts --input <snapshot>` | Regenerated hashes match the v2.5 recorded baseline exactly: board.json `437c7029f758521c63d9d871d65dbe8c95c07752a13327e2da90b09f8bd2896a`, data.js `de1b4acde26d09feee3fb30bea665e30111884072e74dd4b6024d008c6b6cc8e`, dossier.json `3dff0a0d8d84c66f39d1da606c2f6c529e3c62d998d91f8c60c30e22e2ccfbfb`; worktree removed afterwards |
+| Board identity vs 9e6d5bb | row-by-row comparison of `board.json` | **0 rank moves, 0 implied moves over 226 rows**; 0 missing rows; top 3 unchanged: Steakhouse Financial $649,659,981, Gauntlet $388,645,622, Veda $275,126,621. **Branch outputs are byte-identical to the 9e6d5bb baseline on all three files** (board.json `437c7029…`, data.js `de1b4acd…`, dossier.json `3dff0a0d…`); the mcap normalization never reaches an output |
+| Model constants | `tests/model.test.mjs` pins | unchanged from radar-4/radar-5; no recalibration |
+| Sealed snapshot | SHA-256 of the kit input | `42a71213519479f3a180cc5010cbbf6bd18a2447fa0ad29e4c5122b6c9184393` (758 protocols, 40 watchlist) — unchanged, never committed |
+
+## Unresolved findings and remaining risks (audit v2.6)
+
+1. **Negative market cap: hard reject vs normalize (deliberate deviation).**
+   The audit asks for a hard reject of negative finite `mcap_usd`. This branch
+   normalizes to null instead, because the sealed snapshot carries
+   `autofinance` (`mcap_usd: -1`) and a hard reject would make the sealed
+   input unparseable. If the auditor or Rama prefers the hard reject, the
+   sealed snapshot itself would need a corrected re-issue — that decision is
+   not this branch's to make.
+2. **P2-02 residual race window.** Unchanged from v2.5: path-based checks
+   cannot atomically close the window between the final per-entry check and
+   its `rmSync`. Now documented in `docs/output-path-threat-model.md`; not
+   fixed, and not claimed fixed.
+3. **Group-trust assumption.** Unchanged: group-writable output directories
+   and ancestors are accepted on the assumption that the current user's own
+   group is trusted. Documented in the threat-model doc.
+4. **CI is unproven until it runs.** The workflow is written but has never
+   run on GitHub (no runs exist for this repository). If the push is rejected
+   for token scope, CI stays BLOCKED and the commit is dropped from the
+   branch. Even if pushed, the first run on the PR is the first real evidence.
+5. **No resubmission.** The v3 entry remains the live submission; the account
+   reputation limit blocks any further submit. Nothing in this branch was
+   submitted, and this branch must not be merged without Rama's decision.
+
+## Files changed (audit v2.6 batch)
+
+- `lib/model.ts` — `isCexCategory()` + normalized CEX/breakdown predicates;
+  `parseSnapshot` fails closed on future/non-string `listed_at`, normalizes
+  negative `mcap_usd` to null; `boardIssue` binds rank to row position and
+  enforces the slug tie-break.
+- `tests/model.test.mjs` — 7 new tests (5 snapshot-validation/CEX, 2
+  board-gate negatives).
+- `docs/output-path-threat-model.md` (new) + one pointer line in
+  `lib/output-path.ts` header comment.
+- `.github/workflows/ci.yml` (new, separate commit) +
+  `scripts/synthetic-snapshot.mjs` (new, deterministic synthetic input for
+  the CI determinism check).
+- `docs/GPT_AUDIT_V26_2026-11-17.md` (new on this branch, copied from
+  `gpt/audit-v25` so the PR is self-contained), this report.
+
+## What was NOT done (audit v2.6)
+
+- No model constant changed; no recalibration of growth or maturity.
+- No submission or resubmission to make.fun. No merge (PR only).
+- The sealed snapshot was not committed, and no secret was added to the repo.
+- **v2.7-only items left pending (not approved for this branch):** removing
+  the farm-plan `chain` balance instruction and labelling the $50/$100/$200
+  capital bands as illustrative; the accessibility keyboard/screen-reader/
+  device pass (still NOT TESTED).
+- **Negative mcap hard reject:** implemented as normalize-to-null instead —
+  see finding 1 above.
+
