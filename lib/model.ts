@@ -1031,7 +1031,8 @@ export function parseSnapshot(text: string): Snapshot {
 }
 
 /** Why a board is not one the gate will take, or null: exact eligible-set coverage,
- * unique slugs, watchlist members present and pre-token, ranks, order, one shared
+ * unique slugs, watchlist members present and pre-token, ranks bound to row
+ * position, order with the slug tie-break on equal implied values, one shared
  * implied value, and farm steps. The expected set is the watchlist plus every
  * rankable pre-token protocol below the floor, each exactly once. */
 export function boardIssue(board: BoardRow[], snapshot: Snapshot): string | null {
@@ -1055,9 +1056,20 @@ export function boardIssue(board: BoardRow[], snapshot: Snapshot): string | null
     if (p === undefined) return `watchlist slug ${slug} is not in the snapshot`;
     if (!isPreToken(p)) return `watchlist slug ${slug} is not pre-token`;
   }
-  const ranks = board.map((r) => r.rank).sort((a, b) => a - b);
-  for (let i = 0; i < ranks.length; i++) if (ranks[i] !== i + 1) return `rank ${i + 1} is ${ranks[i]}`;
-  for (let i = 1; i < board.length; i++) if (board[i]!.implied_value_usd > board[i - 1]!.implied_value_usd) return `row ${i + 1} outranks row ${i} on implied value`;
+  // Rank is bound to row position: row i+1 must carry rank i+1. Sorting the
+  // rank values first (the old check) would accept a board whose ranks were
+  // swapped between rows, so the gate reads each row's own rank in place.
+  for (let i = 0; i < board.length; i++) {
+    if (board[i]!.rank !== i + 1) return `row ${i + 1} has rank ${board[i]!.rank}, expected ${i + 1}`;
+  }
+  for (let i = 1; i < board.length; i++) {
+    if (board[i]!.implied_value_usd > board[i - 1]!.implied_value_usd) return `row ${i + 1} outranks row ${i} on implied value`;
+    // Equal implied values tie-break on slug ascending: a reordered tie is a
+    // different board, not the same ranking.
+    if (board[i]!.implied_value_usd === board[i - 1]!.implied_value_usd && board[i - 1]!.slug > board[i]!.slug) {
+      return `rows ${i} and ${i + 1} tie on implied value $${board[i]!.implied_value_usd} but slugs are out of order (${board[i - 1]!.slug} before ${board[i]!.slug})`;
+    }
+  }
   if (board.length >= 2 && board[0]!.implied_value_usd === board[board.length - 1]!.implied_value_usd) {
     return `all ${board.length} rows share the same implied value $${board[0]!.implied_value_usd}: a board that ranks nothing by value is not a ranking`;
   }

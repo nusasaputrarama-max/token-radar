@@ -409,6 +409,45 @@ test('boardIssue: exact eligible-set coverage, missing and extra rows fail', () 
   assert.match(boardIssue(dup, s), /duplicate slugs/);
 });
 
+test('boardIssue: ranks are bound to row position, not just contiguous', () => {
+  const s = snap({
+    protocols: [
+      proto({ slug: 'live-one', name: 'Live One', mcap_usd: 10_000_000, gecko_id: 'live', symbol: 'LIVE', tvl_usd: 100_000_000 }),
+      proto({ slug: 'alpha', name: 'Alpha', tvl_usd: 60_000_000 }),
+      proto({ slug: 'beta', name: 'Beta', tvl_usd: 70_000_000 }),
+      proto({ slug: 'gamma', name: 'Gamma', tvl_usd: 10_000_000 }),
+    ],
+    watchlist: ['alpha', 'beta'],
+  });
+  const board = buildBoard(s);
+  assert.equal(boardIssue(board, s), null);
+  // Swap the rank fields of the first two rows: the set {1,2,3} is still
+  // contiguous, so the old sorted-ranks check would have accepted this.
+  const swapped = [{ ...board[0], rank: 2 }, { ...board[1], rank: 1 }, board[2]];
+  assert.match(boardIssue(swapped, s), /row 1 has rank 2, expected 1/);
+});
+
+test('boardIssue: equal implied values tie-break on slug ascending', () => {
+  const s = snap({
+    protocols: [
+      proto({ slug: 'live-one', name: 'Live One', mcap_usd: 10_000_000, gecko_id: 'live', symbol: 'LIVE', tvl_usd: 100_000_000 }),
+      proto({ slug: 'c-proto', name: 'Bigger', tvl_usd: 80_000_000 }),
+      proto({ slug: 'b-proto', name: 'Same', tvl_usd: 60_000_000 }),
+      proto({ slug: 'a-proto', name: 'Same', tvl_usd: 60_000_000 }),
+    ],
+    watchlist: ['c-proto', 'b-proto', 'a-proto'],
+  });
+  const board = buildBoard(s);
+  assert.equal(board[1].slug, 'a-proto');
+  assert.equal(board[2].slug, 'b-proto');
+  assert.equal(board[1].implied_value_usd, board[2].implied_value_usd);
+  assert.equal(boardIssue(board, s), null);
+  // Reverse the tied rows, ranks matching their new positions: ranks are
+  // contiguous and implied is non-increasing, so only the tie-break catches it.
+  const reversed = [board[0], { ...board[2], rank: 2 }, { ...board[1], rank: 3 }];
+  assert.match(boardIssue(reversed, s), /tie on implied value.*out of order/);
+});
+
 test('buildBoard: a non-pre-token watchlist row is refused', () => {
   const s = snap({
     protocols: [proto({ slug: 'alpha', mcap_usd: 1_000_000, gecko_id: 'a', symbol: 'A' })],
