@@ -317,6 +317,31 @@ test('farmSteps: missing evidence never produces a financial action or rewards c
   }
 });
 
+/** v2.8 (carried from v2.7): the chain family must not recommend keeping a
+ * balance active, and every dollar capital figure must be labelled an
+ * illustrative example, never a prescription. */
+test('farmSteps: no balance recommendation anywhere; capital is illustrative, never prescriptive', () => {
+  for (const [label, category] of FAMILY_FIXTURES) {
+    const steps = farmSteps(proto({ slug: `fix-${label}`, category, chains: ['Ethereum'] }), 100);
+    const joined = steps.map((s) => `${s.text} Cost: ${s.cost}. Time: ${s.time}.`).join(' ');
+    assert.doesNotMatch(joined, /keep a small balance active/i, `${label}: balance recommendation`);
+    assert.doesNotMatch(joined, /small balance/i, `${label}: balance wording`);
+    for (const s of steps) {
+      if (/\$\d+/.test(s.cost)) assert.match(s.cost, /illustrative example.*not a recommendation/i, `${label}: ${s.cost}`);
+    }
+  }
+  // The chain family specifically: entry and weekly are verify-first, with no
+  // instruction to use an app or hold a balance.
+  const chain = farmSteps(proto({ category: 'Chain', chains: ['Ethereum'] }), 100);
+  assert.match(chain[1].text, /^Verify/, 'chain entry is verify-first');
+  assert.match(chain[1].text, /do not .* until the app shows/i, 'chain entry');
+  assert.match(chain[2].text, /re-check/i, 'chain weekly re-checks');
+  assert.doesNotMatch(chain[2].text, /use one app/i, 'chain weekly');
+  // Step 2 and the hold step still name the capital bands, labelled as examples.
+  assert.match(chain[1].cost, /^\$50 illustrative example capital, not a recommendation/, 'chain step-2 cost');
+  assert.match(chain[3].cost, /illustrative example, not a recommendation/, 'chain hold cost');
+});
+
 test('farm families: leveraged and speculative actions carry a risk note', () => {
   const risky = { derivatives: 'Derivatives', prediction: 'Prediction Market', insurance: 'Insurance', rwa: 'RWA' };
   for (const [label, category] of Object.entries(risky)) {
@@ -446,6 +471,37 @@ test('boardIssue: equal implied values tie-break on slug ascending', () => {
   // contiguous and implied is non-increasing, so only the tie-break catches it.
   const reversed = [board[0], { ...board[2], rank: 2 }, { ...board[1], rank: 3 }];
   assert.match(boardIssue(reversed, s), /tie on implied value.*out of order/);
+});
+
+test('boardIssue: a CEX, versioned or below-floor watchlist member fails the gate directly', () => {
+  const live = proto({ slug: 'live-one', name: 'Live One', mcap_usd: 10_000_000, gecko_id: 'live', symbol: 'LIVE', tvl_usd: 100_000_000 });
+  const base = snap({
+    protocols: [
+      live,
+      proto({ slug: 'alpha', name: 'Alpha', tvl_usd: 60_000_000 }),
+      proto({ slug: 'beta', name: 'Beta', tvl_usd: 70_000_000 }),
+    ],
+    watchlist: ['alpha', 'beta'],
+  });
+  const board = buildBoard(base);
+  assert.equal(boardIssue(board, base), null);
+  // buildBoard refuses these, and the gate must too when handed the board
+  // directly: a crafted board/snapshot pair must not pass on coverage alone.
+  const cex = snap({
+    protocols: [live, proto({ slug: 'alpha', name: 'Alpha', category: 'CEX', tvl_usd: 60_000_000 }), proto({ slug: 'beta', name: 'Beta', tvl_usd: 70_000_000 })],
+    watchlist: ['alpha', 'beta'],
+  });
+  assert.match(boardIssue(board, cex), /not rankable/);
+  const versioned = snap({
+    protocols: [live, proto({ slug: 'alpha', name: 'Alpha V2', tvl_usd: 60_000_000 }), proto({ slug: 'beta', name: 'Beta', tvl_usd: 70_000_000 })],
+    watchlist: ['alpha', 'beta'],
+  });
+  assert.match(boardIssue(board, versioned), /not rankable/);
+  const belowFloor = snap({
+    protocols: [live, proto({ slug: 'alpha', name: 'Alpha', tvl_usd: 10_000_000 }), proto({ slug: 'beta', name: 'Beta', tvl_usd: 70_000_000 })],
+    watchlist: ['alpha', 'beta'],
+  });
+  assert.match(boardIssue(board, belowFloor), /below the \$50000000 floor/);
 });
 
 test('buildBoard: a non-pre-token watchlist row is refused', () => {

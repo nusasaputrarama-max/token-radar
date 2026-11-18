@@ -620,7 +620,9 @@ export function gasToken(chain: string): string | null {
   return map[c] ?? null;
 }
 
-/** Capital for one farm position, from the protocol's own TVL. */
+/** Capital for one farm position, from the protocol's own TVL. The bands are
+ * illustrative example amounts only, not a recommendation: the farm steps label
+ * them as such, and no step instructs spending them. */
 function capitalFor(p: SnapshotProtocol): number {
   if (p.tvl_usd >= 1_000_000_000) return 200;
   if (p.tvl_usd >= 100_000_000) return 100;
@@ -661,7 +663,7 @@ export function actionFor(p: SnapshotProtocol, capital: number, chain: string): 
     case 'rwa': return `Verify on ${name}'s official app which yield-bearing asset it offers on ${chain}, what backs it, and what the redemption terms are — the snapshot does not name the asset, so do not mint anything until the app shows it. RWA assets carry issuer and redemption risk, not routine low-risk farming: check the redemption terms first.`;
     case 'insurance': return `Verify on ${name}'s official app which cover it sells on ${chain}, what it covers, and what the premium and expiry are — the snapshot does not list cover products, so do not buy anything until the app shows a product that fits. Cover is not routine low-risk farming: read the policy terms and expiry before paying.`;
     case 'governance': return `Verify on ${name}'s official app whether it has an open governance round on ${chain} and what voting requires — the snapshot does not establish a round, so do not deposit or vote until the app shows one is open.`;
-    case 'chain': return `Verify what one app built on ${name} supports on its own page, then use it and keep a small balance active on its chain; a chain itself takes no deposits. Do not move funds until the app shows what it supports.`;
+    case 'chain': return `Verify what one app built on ${name} supports on its own page; a chain itself takes no deposits. Do not move funds until the app shows what it supports.`;
     case 'payments': return `Verify on ${name}'s official app which payment methods it supports on ${chain} — the snapshot does not list them, so do not top up or spend until the app shows a supported method.`;
     case 'indexes': return `Verify on ${name}'s official app which index it tracks on ${chain} and what its current composition is — the snapshot does not name the index, so do not buy anything until the app shows it.`;
     case 'cedefi': return `Verify on ${name}'s official app which CeDeFi product it offers and what moves between its on-chain and off-chain legs — the snapshot does not name a product, so do not move anything until the app shows one.`;
@@ -717,7 +719,7 @@ function weeklyFor(p: SnapshotProtocol, capital: number, chain: string): string 
     case 'rwa': return `Each week, re-check ${name}'s official app for the asset you verified on ${chain} and confirm the yield and redemption terms before doing anything.`;
     case 'insurance': return `Each week, re-check ${name}'s official app that the cover you verified on ${chain} is still active and confirm the expiry before doing anything.`;
     case 'governance': return `Each week, re-check ${name}'s official app for a new governance round on ${name} and confirm what voting requires before doing anything.`;
-    case 'chain': return `Each week, use one app built on ${chain} through ${name} and keep a small balance active on the chain; verify what it supports on its own page first.`;
+    case 'chain': return `Each week, re-check one app built on ${chain} through ${name} and confirm what it supports on its own page before doing anything.`;
     case 'payments': return `Each week, re-check ${name}'s official app for the payment methods you verified on ${chain} and confirm they are still supported before spending.`;
     case 'indexes': return `Each week, re-check ${name}'s official app for the index you verified on ${chain} and confirm its composition before doing anything.`;
     case 'cedefi': return `Each week, re-check ${name}'s official app for the CeDeFi product you verified and confirm it is still offered before moving anything.`;
@@ -802,7 +804,7 @@ export function farmSteps(p: SnapshotProtocol, age: number | null): FarmStep[] {
     },
     {
       text: actionFor(p, capital, chain),
-      cost: `$${capital} of capital; network fee, variable — check the current fee`,
+      cost: `$${capital} illustrative example capital, not a recommendation; network fee, variable — check the current fee`,
       time: '15 minutes to set up',
     },
     {
@@ -812,7 +814,7 @@ export function farmSteps(p: SnapshotProtocol, age: number | null): FarmStep[] {
     },
     {
       text: `If you verified a supported action and took a position, hold it for at least ${hold} days so the activity is counted in more than one snapshot. If nothing was supported, do not open a position on a guess.`,
-      cost: `the $${capital} stays in the position only if one was opened`,
+      cost: `the $${capital} figure is an illustrative example, not a recommendation; it stays in the position only if one was opened`,
       time: `${hold} days`,
     },
     {
@@ -1055,6 +1057,11 @@ export function boardIssue(board: BoardRow[], snapshot: Snapshot): string | null
     const p = index.get(slug);
     if (p === undefined) return `watchlist slug ${slug} is not in the snapshot`;
     if (!isPreToken(p)) return `watchlist slug ${slug} is not pre-token`;
+    // The gate enforces the full watchlist contract itself: buildBoard() also
+    // rejects these, but a board handed to this gate directly must not pass
+    // with a CEX/versioned or below-floor watchlist member.
+    if (!isRankable(p)) return `watchlist slug ${slug} is not rankable (exchange or versioned pool)`;
+    if (p.tvl_usd < snapshot.floor_usd) return `watchlist slug ${slug} is below the $${snapshot.floor_usd} floor`;
   }
   // Rank is bound to row position: row i+1 must carry rank i+1. Sorting the
   // rank values first (the old check) would accept a board whose ranks were
